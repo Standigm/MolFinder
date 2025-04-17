@@ -135,7 +135,7 @@ nfeatures = 2
 
 
 # Set your functions.
-def feature1(x):
+def feature_sascore(x):
     return sascorer.calculateScore(x)  # SAS
 
 
@@ -143,11 +143,11 @@ def feature1a(x):
     return 1 - (sascorer.calculateScore(x) - 1) / 9  # SAS
 
 
-def feature2(x):
+def feature_qed(x):
     return QED.default(x)  # QED
 
 
-def feature3(x):
+def feature_tanimoto_similiarity(x):
     return TanimotoSimilarity(_get_fp(x), target_fps)  # similarity
 
 
@@ -174,7 +174,7 @@ if args.target:  # TARGET Molecule VESRSION
     # Modify the cal_features function; Index 0, 1, and 2 are fixed.
     # You need to put the desired features after index 3 of the returned list.
     def cal_features(_smi, _mol):  # set data_column
-        return [_smi, _mol, True, feature2(_mol), feature3(_mol)]
+        return [_smi, _mol, True, feature_qed(_mol), feature_tanimoto_similiarity(_mol)]
 
     # Then modify obj_fn and column_name to suit your purpose.
     target_fps = get_fp(args.target)
@@ -191,7 +191,7 @@ else:  # Non-TARGET Molecule VESRSION
     # Modify the cal_features function; Index 0, 1, and 2 are fixed.
     # You need to put the desired features after index 3 of the returned list.
     def cal_features(_smi, _mol):  # set data_column
-        return [_smi, _mol, True, feature1(_mol), feature2(_mol)]
+        return [_smi, _mol, True, feature_sascore(_mol), feature_qed(_mol)]
 
     # Then modify obj_fn and column_name to suit your purpose.
     qed_coef = args.coefficient
