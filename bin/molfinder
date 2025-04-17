@@ -1,35 +1,29 @@
 #!/usr/bin/env python3
 
+import argparse
 import os
 import sys
 import time
-import argparse
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-
-from rdkit import Chem
-from rdkit import rdBase
-from rdkit.Chem import RDConfig
+from rdkit import Chem, rdBase
+from rdkit.Chem import QED, AllChem, RDConfig
 from rdkit.DataStructs import TanimotoSimilarity
-from rdkit.Chem import QED, AllChem
 
-sys.path.append(os.path.join(RDConfig.RDContribDir, 'SA_Score'))
-
-import sascorer
+sys.path.append(os.path.join(RDConfig.RDContribDir, "SA_Score"))
 
 import ModSMI
+import sascorer
 
 parser = argparse.ArgumentParser(
-    description="This python script is made by Yongbeom Kwon")
+    description="This python script is made by Yongbeom Kwon"
+)
 parser.add_argument("-i", "--input", type=str, required=True, help="")
-parser.add_argument("-r",
-                    "--random-seed",
-                    metavar="N",
-                    type=int,
-                    default=None,
-                    help="Random seed")
+parser.add_argument(
+    "-r", "--random-seed", metavar="N", type=int, default=None, help="Random seed"
+)
 parser.add_argument(
     "--bank-size",
     metavar="N",
@@ -57,8 +51,7 @@ parser.add_argument(
     metavar="N",
     default=150,
     type=int,
-    help=
-    "Convergent round; It determines when D_cut reaches a minimum value. And also It decides diversity of molecules",
+    help="Convergent round; It determines when D_cut reaches a minimum value. And also It decides diversity of molecules",
 )
 parser.add_argument(
     "-c",
@@ -93,32 +86,36 @@ parser.add_argument(
 # parser.add_argument(
 #     "-nf", "--nfeatures", metavar="N", type=int, default=2, help="a number of features"
 # )
-parser.add_argument("-v",
-                    "--verbosity",
-                    action="count",
-                    default=0,
-                    help="print error")
+parser.add_argument("-v", "--verbosity", action="count", default=0, help="print error")
 args = parser.parse_args()
 
 if args.verbosity == 0:
-    rdBase.DisableLog('rdApp.*')
+    rdBase.DisableLog("rdApp.*")
 
 fp_method = args.fp_method
 
 if fp_method == "rdkit":
-    _get_fp = lambda x: Chem.RDKFingerprint(x)
+
+    def _get_fp(x):
+        return Chem.RDKFingerprint(x)
 elif fp_method == "morgan":
-    _get_fp = lambda x: AllChem.GetMorganFingerprint(x, 2)
+
+    def _get_fp(x):
+        return AllChem.GetMorganFingerprintAsBitVect(x, 2)
 elif fp_method == "morgan1024":
-    _get_fp = lambda x: AllChem.GetMorganFingerprintAsBitVect(x, 2, nBits=1024)
+
+    def _get_fp(x):
+        return AllChem.GetMorganFingerprintAsBitVect(x, 2, nBits=1024)
 elif fp_method == "morgan2048":
-    _get_fp = lambda x: AllChem.GetMorganFingerprintAsBitVect(x, 2)
+
+    def _get_fp(x):
+        return AllChem.GetMorganFingerprintAsBitVect(x, 2, nBits=2048)
 
 
 def get_fp(mol_or_smi):
-    if type(mol_or_smi) in [Chem.rdchem.Mol, Chem.rdchem.RWMol]:
+    if isinstance(mol_or_smi, (Chem.rdchem.Mol, Chem.rdchem.RWMol)):
         _mol = mol_or_smi
-    elif type(mol_or_smi) == str:
+    elif isinstance(mol_or_smi, str):
         _mol = Chem.MolFromSmiles(mol_or_smi)
     else:
         raise ValueError("This type is not allowed.")
@@ -136,11 +133,22 @@ Features must return a number.
 # The number of features
 nfeatures = 2
 
+
 # Set your functions.
-feature1 = lambda x: sascorer.calculateScore(x)  # SAS
-feature1a = lambda x: 1 - (sascorer.calculateScore(x) - 1) / 9  # SAS
-feature2 = lambda x: QED.default(x)  # QED
-feature3 = lambda x: TanimotoSimilarity(_get_fp(x), target_fps)  # similarity
+def feature1(x):
+    return sascorer.calculateScore(x)  # SAS
+
+
+def feature1a(x):
+    return 1 - (sascorer.calculateScore(x) - 1) / 9  # SAS
+
+
+def feature2(x):
+    return QED.default(x)  # QED
+
+
+def feature3(x):
+    return TanimotoSimilarity(_get_fp(x), target_fps)  # similarity
 
 
 def feature5(x):  # RingPenalty
@@ -163,7 +171,6 @@ You need to put the desired features after index 3 of the returned list.
 Then modify obj_fn and column_name to suit your purpose.
 """
 if args.target:  # TARGET Molecule VESRSION
-
     # Modify the cal_features function; Index 0, 1, and 2 are fixed.
     # You need to put the desired features after index 3 of the returned list.
     def cal_features(_smi, _mol):  # set data_column
@@ -173,13 +180,14 @@ if args.target:  # TARGET Molecule VESRSION
     target_fps = get_fp(args.target)
     sim_coef = args.coefficient
     qed_coef = 1 - sim_coef
-    obj_fn = lambda x: sim_coef * x[:, 4] + qed_coef * x[:, 3]
+
+    def obj_fn(x):
+        return sim_coef * x[:, 4] + qed_coef * x[:, 3]
 
     #            SMILES / feature1 / feature2 / obj_fn
     column_name = ["SMILES", "QED", "SIM", "TARGET"]
 
 else:  # Non-TARGET Molecule VESRSION
-
     # Modify the cal_features function; Index 0, 1, and 2 are fixed.
     # You need to put the desired features after index 3 of the returned list.
     def cal_features(_smi, _mol):  # set data_column
@@ -188,7 +196,9 @@ else:  # Non-TARGET Molecule VESRSION
     # Then modify obj_fn and column_name to suit your purpose.
     qed_coef = args.coefficient
     sas_coef = 1 - qed_coef
-    obj_fn = lambda x: qed_coef * x[:, 4] - sas_coef * x[:, 3]
+
+    def obj_fn(x):
+        return qed_coef * x[:, 4] - sas_coef * x[:, 3]
 
     #            SMILES / feature1 / feature2 / obj_fn
     column_name = ["SMILES", "SAS", "QED", "TARGET"]
@@ -205,7 +215,6 @@ class ChkTime:
 
 
 def cal_avg_dist(solutions):
-
     dist_sum = 0
     min_dist = 10
     max_dist = 0
@@ -226,7 +235,6 @@ def cal_avg_dist(solutions):
 
 
 def cal_rnd_avg_dist(solutions, nrnd=400000):
-
     dist_sum = 0
     min_dist = 10
     max_dist = 0
@@ -234,7 +242,6 @@ def cal_rnd_avg_dist(solutions, nrnd=400000):
 
     start_chk = time.time()
     for _ in range(nrnd):
-
         if _ == 0:
             tmp_chk = start_chk
 
@@ -250,11 +257,11 @@ def cal_rnd_avg_dist(solutions, nrnd=400000):
             max_dist = dist
         if _ % int(nrnd / 10) == 0:
             print(
-                f"{_/nrnd*100:.1f}% complete {(time.time() - tmp_chk)/60} min/10%\r"
+                f"{_ / nrnd * 100:.1f}% complete {(time.time() - tmp_chk) / 60} min/10%\r"
             )
             tmp_chk = time.time()
 
-    print(f"calc. Dist total {(time.time() - start_chk)/60} min")
+    print(f"calc. Dist total {(time.time() - start_chk) / 60} min")
 
     return dist_sum / nrnd  # , min_dist, max_dist
 
@@ -273,15 +280,14 @@ def cal_array_dist(solutions1, solutions2):
 
     for i in range(n1):
         for j in range(n2):
-            fps1 = get_fp(solutions[i, 1])
-            fps2 = get_fp(solutions[j, 1])
+            fps1 = get_fp(solutions1[i, 1])
+            fps2 = get_fp(solutions2[j, 1])
             dist[n1, n2] = TanimotoSimilarity(fps1, fps2)
 
     return dist
 
 
 def init_bank(file_name, nbank=None, nsmiles=None, rseed=None):
-
     np.random.seed(rseed)
 
     _df = pd.read_csv(file_name)
@@ -302,17 +308,14 @@ def init_bank(file_name, nbank=None, nsmiles=None, rseed=None):
         mol = Chem.MolFromSmiles(j)
         bank[i, 1] = mol
         Chem.Kekulize(mol)
-        bank[i, 0] = Chem.MolToSmiles(mol,
-                                      kekuleSmiles=True,
-                                      isomericSmiles=False)
+        bank[i, 0] = Chem.MolToSmiles(mol, kekuleSmiles=True, isomericSmiles=False)
         bank[i, 3:] = cal_features(j, mol)[3:]
 
     return bank
 
 
 def prepare_seed(solutions, seed):
-
-    solutions = solutions[np.where(solutions[:, 2] == True)]  # 사용 가능한 것이 True
+    solutions = solutions[np.where(solutions[:, 2] is True)]  # 사용 가능한 것이 True
     x = np.argsort(obj_fn(solutions))
     solutions = x[::-1]
 
@@ -321,15 +324,13 @@ def prepare_seed(solutions, seed):
 
     if len(solutions) > nseed:
         i = 0
-        if len(seed) is 0:  # First selection,
+        if len(seed) == 0:  # First selection,
             bank[solutions[0], 2] = False
             seed.append(bank[solutions[0]])
             i += 1
 
         if len(solutions) < len(seed):
-            print(
-                f"## Solutions is less than seeds / round {round_} / iter {niter}"
-            )
+            print(f"## Solutions is less than seeds / round {round_} / iter {niter}")
             raise ValueError
 
         while len(seed) < nseed:
@@ -379,12 +380,11 @@ def prepare_seed(solutions, seed):
                 seed.append(bank[rnd_number[i]])
                 i += 1
 
-    print(f"@ prepare_seed finished!")
+    print("@ prepare_seed finished!")
     return np.asarray(seed)
 
 
 def cut_smi(smi1, smi2, func, ring_bool):
-
     l_smi = None
     r_smi = None
 
@@ -410,7 +410,7 @@ def get_sliced_smiles(smi1, smi2, func, ring_bool):
             raise PermissionError
         try:
             l_smi, r_smi = cut_smi(smi1, smi2, func, ring_bool)
-        except:
+        except Exception:
             pass
     return l_smi, r_smi
 
@@ -454,16 +454,11 @@ def append_seed(_smi, _mol, update_solution):
         update_solution.append(cal_features(_smi, _mol))
         return 1
     except Chem.rdchem.MolSanitizeException:
-        print(f"#### QED error {new_smi}")
+        print(f"#### QED error {_smi}")
         return 0
 
 
-def prepare_child(seed,
-                  nCross1=20,
-                  nCross2=20,
-                  nReplace=10,
-                  nAdd=10,
-                  nRemove=10):
+def prepare_child(seed, nCross1=20, nCross2=20, nReplace=10, nAdd=10, nRemove=10):
     update_solution = []
     # print(seed[:, 0])
     for i in range(seed.shape[0]):
@@ -486,10 +481,12 @@ def prepare_child(seed,
 
                 if np.random.random() >= 0.5:
                     new_smi, mol = crossover_smiles(
-                        smi1, smi2, ModSMI.prepare_rigid_crossover, True)
+                        smi1, smi2, ModSMI.prepare_rigid_crossover, True
+                    )
                 else:
                     new_smi, mol = crossover_smiles(
-                        smi2, smi1, ModSMI.prepare_rigid_crossover, True)
+                        smi2, smi1, ModSMI.prepare_rigid_crossover, True
+                    )
 
                 if mol:
                     j += append_seed(new_smi, mol, update_solution)
@@ -511,10 +508,12 @@ def prepare_child(seed,
 
                 if np.random.random() >= 0.5:
                     new_smi, mol = crossover_smiles(
-                        smi1, smi2, ModSMI.prepare_rigid_crossover, False)
+                        smi1, smi2, ModSMI.prepare_rigid_crossover, False
+                    )
                 else:
                     new_smi, mol = crossover_smiles(
-                        smi2, smi1, ModSMI.prepare_rigid_crossover, False)
+                        smi2, smi1, ModSMI.prepare_rigid_crossover, False
+                    )
 
                 if mol:
                     j += append_seed(new_smi, mol, update_solution)
@@ -647,7 +646,7 @@ def update_bank(child_solutions, local_opt=False):
             fps1 = get_fp(child_solutions[i, 1])
 
         max_similarity = 0
-        max_n = None
+        max_n = 0
         for _ in range(len(bank)):
             fps2 = get_fp(bank[_, 1])
             dist = TanimotoSimilarity(fps1, fps2)
@@ -657,30 +656,32 @@ def update_bank(child_solutions, local_opt=False):
 
         if local_opt:
             if (1 - max_similarity) < dcut:
-                if obj_fn(local_solutions[x:x + 1]) > obj_fn(
-                        bank[max_n:max_n + 1]):
-                    bank[max_n] = local_solutions[x:x + 1]
+                if obj_fn(local_solutions[x : x + 1]) > obj_fn(bank[max_n : max_n + 1]):
+                    bank[max_n] = local_solutions[x : x + 1]
                     cnt_replace += 1
             else:
                 _min = np.argmin(obj_fn(bank))
-                if (max_similarity < 0.98) and (obj_fn(bank[_min:_min + 1]) <
-                                                final_avg.mean()):
-                    if obj_fn(local_solutions[x:x + 1]) > obj_fn(
-                            bank[_min:_min + 1]):
-                        bank[_min] = local_solutions[x:x + 1]
+                if (max_similarity < 0.98) and (
+                    obj_fn(bank[_min : _min + 1]) < final_avg.mean()
+                ):
+                    if obj_fn(local_solutions[x : x + 1]) > obj_fn(
+                        bank[_min : _min + 1]
+                    ):
+                        bank[_min] = local_solutions[x : x + 1]
                         cnt_replace += 1
         else:
             if (1 - max_similarity) < dcut:
-                if obj_fn(child_solutions[i:i + 1]) > obj_fn(
-                        bank[max_n:max_n + 1]):
+                if obj_fn(child_solutions[i : i + 1]) > obj_fn(bank[max_n : max_n + 1]):
                     bank[max_n] = child_solutions[i]
                     cnt_replace += 1
             else:
                 _min = np.argmin(obj_fn(bank))
-                if (max_similarity < 0.98) and (obj_fn(bank[_min:_min + 1]) <
-                                                final_avg.mean()):
-                    if obj_fn(child_solutions[i:i + 1]) > obj_fn(
-                            bank[_min:_min + 1]):
+                if (max_similarity < 0.98) and (
+                    obj_fn(bank[_min : _min + 1]) < final_avg.mean()
+                ):
+                    if obj_fn(child_solutions[i : i + 1]) > obj_fn(
+                        bank[_min : _min + 1]
+                    ):
                         bank[_min] = child_solutions[i]
                         cnt_replace += 1
 
@@ -688,11 +689,10 @@ def update_bank(child_solutions, local_opt=False):
 
 
 if __name__ == "__main__":
-
     target_value = 3
     target_round = args.convergent_round
 
-    R_d = 10**(np.log10(2 / target_value) / int(target_round))
+    R_d = 10 ** (np.log10(2 / target_value) / int(target_round))
 
     nbank = args.bank_size  # number of bank conformations
     nseed = args.seed_size  # number of seeds(mating) per iteration
@@ -715,7 +715,7 @@ if __name__ == "__main__":
 
     plot_list = []
 
-    fail_f = open(f"fail_smiles.txt", "w")
+    fail_f = open("fail_smiles.txt", "w")
 
     chk_calc = ChkTime()
 
@@ -732,29 +732,28 @@ if __name__ == "__main__":
 
     chk_calc = chk_calc.get()
 
-    with open(f"iteration.log", "w") as log_f2:
+    with open("iteration.log", "w") as log_f2:
         log_f2.write(f"load_time: {chk_load:.3f} min\n")
         log_f2.write(f"dist_time: {chk_calc:.1f} min\n")
         log_f2.write(
-            f"round  iter  unused  time_seed  time_child  time_update  n_replace  n_eval\n"
+            "round  iter  unused  time_seed  time_child  time_update  n_replace  n_eval\n"
         )
 
-    with open(f"message.log", "w") as log_f:
+    with open("message.log", "w") as log_f:
         log_f.write(f"nbank: {nbank}\n")
         log_f.write(f"nseed: {nseed}\n")
         log_f.write(f"max_repeat: {max_repeat}\n")
         log_f.write(f"R_d: {R_d:.6f} (convergent_round: {target_round})\n")
-        log_f.write(f"D_avg: {davg:.3f} (similarity: {1-davg:.3f})\n")
+        log_f.write(f"D_avg: {davg:.3f} (similarity: {1 - davg:.3f})\n")
         tmp_str = ""
         for i, j in enumerate(column_name[1:-1]):
-            tmp_str += f"{j}: {first_bank[:, i+3].mean():.3f}, "
+            tmp_str += f"{j}: {first_bank[:, i + 3].mean():.3f}, "
         log_f.write(f"init_bank_avg - {tmp_str[:-2]}\n")
         log_f.write(
-            f"round   dcut  n_iter  obj_avg  obj_min  obj_max  n_replace  min/round\n"
+            "round   dcut  n_iter  obj_avg  obj_min  obj_max  n_replace  min/round\n"
         )
 
-    save_bank = np.empty([max_repeat, bank.shape[0], bank.shape[1] - 1],
-                         dtype=object)
+    save_bank = np.empty([max_repeat, bank.shape[0], bank.shape[1] - 1], dtype=object)
 
     for round_ in range(max_repeat):
         if (round_ != 0) and (dcut > davg / 3):
@@ -778,7 +777,8 @@ if __name__ == "__main__":
             time_child = ChkTime()
             child_solutions = prepare_child(seed)
             shuffled_index_ = np.random.permutation(
-                child_solutions.shape[0])  # @4 에서 추가 됨.
+                child_solutions.shape[0]
+            )  # @4 에서 추가 됨.
             child_solutions = child_solutions[shuffled_index_]
             time_child = time_child.get()
             # log_f.write(f'## CHILD ### @ {np.count_nonzero(bank[:, 2] == True)} #### AFTER ##\n')
@@ -787,8 +787,7 @@ if __name__ == "__main__":
             try:
                 # log_f.write(f'## BANK #### @ {np.count_nonzero(bank[:, 2] == True)} #############\n')
                 # n_replace += update_bank(child_solutions, True)  # local update
-                _n_replace, n_eval = update_bank(
-                    child_solutions)  # non-local update
+                _n_replace, n_eval = update_bank(child_solutions)  # non-local update
                 n_replace += _n_replace
                 # log_f.write(f'## BANK #### @ {np.count_nonzero(bank[:, 2] == True)} #### AFTER ##\n')
             except PermissionError:
@@ -796,20 +795,20 @@ if __name__ == "__main__":
             time_update = time_update.get()
             niter += 1
 
-            if np.count_nonzero(bank[:, 2] == True) < (nbank - nseed * 0.9):
+            if np.count_nonzero(bank[:, 2] is True) < (nbank - nseed * 0.9):
                 iter_gate = False
-            with open(f"iteration.log", "a") as log_f2:
+            with open("iteration.log", "a") as log_f2:
                 log_f2.write(
-                    f"{round_:>4}  {niter:4}  {np.count_nonzero(bank[:, 2] == True):>6}     {time_seed:6.1f}"
+                    f"{round_:>4}  {niter:4}  {np.count_nonzero(bank[:, 2] is True):>6}     {time_seed:6.1f}"
                     f"      {time_child:6.1f}       {time_update:6.1f}    {n_replace:7}     {n_eval}\n"
                 )
 
         final_avg = obj_fn(bank)
 
-        with open(f"message.log", "a") as log_f:
+        with open("message.log", "a") as log_f:
             log_f.write(
                 f"{round_:>4}   {dcut:4.3f}    {niter:3}   {final_avg.mean():6.3f}   {final_avg.min():6.3f}   "
-                f"{final_avg.max():6.3f}    {n_replace:7}   {(time.time() - timechk)/60:8.2f}\n"
+                f"{final_avg.max():6.3f}    {n_replace:7}   {(time.time() - timechk) / 60:8.2f}\n"
             )
 
         bank[:, 2] = True  # reset to unused solutions
@@ -833,9 +832,9 @@ if __name__ == "__main__":
 
     np.save(f"list_bank_{R_d:.5f}_{args.coefficient:.3f}.npy", save_bank)
     save_smiles = pd.DataFrame(save_bank[:, :, 0])
-    save_smiles.to_csv(f"list_smiles_{R_d:.5f}_{args.coefficient:.3f}.csv",
-                       header=False,
-                       index=False)
+    save_smiles.to_csv(
+        f"list_smiles_{R_d:.5f}_{args.coefficient:.3f}.csv", header=False, index=False
+    )
 
     df = pd.DataFrame(final_bank, columns=column_name)
     df.to_csv(f"final_bank_{R_d:.5f}_{args.coefficient:.3f}.csv", index=False)
