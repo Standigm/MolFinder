@@ -1,14 +1,9 @@
-import os
+import random
 import re
 import time
-import random
-import itertools
 
 import numpy as np
-
 from rdkit import Chem
-from rdkit.Chem import AllChem
-from rdkit.Chem import Draw
 
 limit_ = 200
 
@@ -24,7 +19,7 @@ def set_avoid_ring(_smiles):
 
 
 def prepare_rigid_crossover(_smiles, side, consider_ring=True, _minimum_len=4):
-    """ 1 point crossover
+    """1 point crossover
     :param _smiles: SMILES (str)
     :param side: Left SMILES or Right SMILES ['L'|'R'] (str)
     :param consider_ring: consider about avoiding ring (bool)
@@ -82,7 +77,7 @@ def prepare_rigid_crossover(_smiles, side, consider_ring=True, _minimum_len=4):
                 list_ring = [_ for _, val in enumerate(_smi) if val == i]
                 if (len(list_ring) % 2) == 1:
                     b = random.sample(list_ring, 1)
-                    _smi = _smi[:b[0]] + _smi[b[0] + 1:]
+                    _smi = _smi[: b[0]] + _smi[b[0] + 1 :]
                     # print(f'@ {_smi} // {_smiles}')
 
         p += 1
@@ -103,7 +98,6 @@ def prepare_rigid_crossover(_smiles, side, consider_ring=True, _minimum_len=4):
 
 
 def chk_branch(_smi, side=None):
-
     if side not in ["L", "R", None]:
         raise Exception("You must choice in L(Left) or R(Right)")
 
@@ -123,7 +117,7 @@ def chk_branch(_smi, side=None):
             if n_branch > min_branch:
                 min_branch = n_branch
                 branch_list.append(i)
-    if side == None:
+    if side is None:
         return n_branch
     return np.asarray(branch_list), min_branch
 
@@ -146,6 +140,8 @@ def tight_rm_branch(_smi_l, _smi_r):
 
     b = None
     n_branch = chk_branch(_new_smi)
+    if not isinstance(n_branch, int):
+        raise ValueError
 
     q = len(_smi_l)
     while n_branch > 0:  # over opened-branch
@@ -153,7 +149,8 @@ def tight_rm_branch(_smi_l, _smi_r):
         _smi_r_open_branch = get_open_branch(_smi_r)
         open_branch = get_open_branch(_smi_l + _smi_r)
         avoid_tokens = [
-            i for i, e in enumerate(_smi_l + _smi_r)
+            i
+            for i, e in enumerate(_smi_l + _smi_r)
             if e in ["=", "#", "@", "1", "2", "3", "4", "5", "6", "7", "8"]
         ]
 
@@ -166,17 +163,20 @@ def tight_rm_branch(_smi_l, _smi_r):
         if n > 0.5:  # 추가
             branch_gate = False
             j = 0
+            b: int
             while not branch_gate:  # Ring 부분을 피해서 자름
                 if j == limit_:
                     raise ValueError
-                b = np.random.randint(_smi_l_open_branch[-1] + 1,
-                                      _smi_r_open_branch[-1] + q)
+                b = np.random.randint(
+                    _smi_l_open_branch[-1] + 1, _smi_r_open_branch[-1] + q
+                )
                 j += 1
                 if b not in avoid_tokens:
                     branch_gate = True
             n_branch -= 1
-            if b <= len(_smi_l
-                        ):  # SMILES 길이를 고려하여 자른다. 좌측 SMILES의 open branch를 cut!
+            if b <= len(
+                _smi_l
+            ):  # SMILES 길이를 고려하여 자른다. 좌측 SMILES의 open branch를 cut!
                 _smi_l = _smi_l[:b] + ")" + _smi_l[b:]
                 q += 1
             else:  # 좌측 SMILES 길이를 제외한 수가 우측 SMILES 문자의 위치를 의미한다.
@@ -186,14 +186,15 @@ def tight_rm_branch(_smi_l, _smi_r):
             b = _smi_l_open_branch[-1]  # (Random으로도 가능함. 과한 부분만 Cut!)
             n_branch -= 1
             q -= 1
-            _smi_l = _smi_l[:b] + _smi_l[b + 1:]
+            _smi_l = _smi_l[:b] + _smi_l[b + 1 :]
 
     while n_branch < 0:  # over closed-branch
         _smi_l_close_branch = get_close_branch(_smi_l)
         _smi_r_close_branch = get_close_branch(_smi_r)
         close_branch = get_close_branch(_smi_l + _smi_r)
         avoid_tokens = [
-            i for i, e in enumerate(_smi_l + _smi_r)
+            i
+            for i, e in enumerate(_smi_l + _smi_r)
             if e in ["=", "#", "@", "1", "2", "3", "4", "5", "6", "7", "8"]
         ]
 
@@ -207,8 +208,9 @@ def tight_rm_branch(_smi_l, _smi_r):
             branch_gate = False
             j = 0
             while not branch_gate:  # Ring 부분을 피해서 자름
-                b = np.random.randint(_smi_l_close_branch[-1] + 1,
-                                      _smi_r_close_branch[0] + q + 1)
+                b = np.random.randint(
+                    _smi_l_close_branch[-1] + 1, _smi_r_close_branch[0] + q + 1
+                )
                 j += 1
                 if b not in (close_branch + avoid_tokens):
                     branch_gate = True
@@ -225,7 +227,7 @@ def tight_rm_branch(_smi_l, _smi_r):
             b = _smi_r_close_branch[0]
             n_branch += 1
             # print(f'{_smi_r[b]}')
-            _smi_r = _smi_r[:b] + _smi_r[b + 1:]
+            _smi_r = _smi_r[:b] + _smi_r[b + 1 :]
 
     # time_.append(time.time() - tmp)
 
@@ -233,7 +235,6 @@ def tight_rm_branch(_smi_l, _smi_r):
 
 
 def replace_atom(_smi):
-
     #                    C /B  N  P / O  S / F  Cl  Br  I
     replace_atom_list = [6, 5, 7, 15, 8, 16, 9, 17, 35, 53]
     #                         C  N  P / O  S
@@ -260,32 +261,32 @@ def replace_atom(_smi):
         if mw.GetAtomWithIdx(rnd_atom).GetIsAromatic():
             if valence == 3:
                 mw.ReplaceAtom(
-                    rnd_atom,
-                    Chem.Atom(replace_arom_atom_list[np.random.randint(0, 3)]))
+                    rnd_atom, Chem.Atom(replace_arom_atom_list[np.random.randint(0, 3)])
+                )
             elif valence == 2:
                 mw.ReplaceAtom(
-                    rnd_atom,
-                    Chem.Atom(replace_arom_atom_list[np.random.randint(1, 5)]))
+                    rnd_atom, Chem.Atom(replace_arom_atom_list[np.random.randint(1, 5)])
+                )
             else:
                 continue
             mw.GetAtomWithIdx(rnd_atom).SetIsAromatic(True)
         else:
             if valence == 4:
                 mw.ReplaceAtom(
-                    rnd_atom,
-                    Chem.Atom(replace_atom_list[np.random.randint(0, 1)]))
+                    rnd_atom, Chem.Atom(replace_atom_list[np.random.randint(0, 1)])
+                )
             elif valence == 3:
                 mw.ReplaceAtom(
-                    rnd_atom,
-                    Chem.Atom(replace_atom_list[np.random.randint(0, 4)]))
+                    rnd_atom, Chem.Atom(replace_atom_list[np.random.randint(0, 4)])
+                )
             elif valence == 2:
                 mw.ReplaceAtom(
-                    rnd_atom,
-                    Chem.Atom(replace_atom_list[np.random.randint(0, 6)]))
+                    rnd_atom, Chem.Atom(replace_atom_list[np.random.randint(0, 6)])
+                )
             elif valence == 1:
                 mw.ReplaceAtom(
-                    rnd_atom,
-                    Chem.Atom(replace_atom_list[np.random.randint(0, 10)]))
+                    rnd_atom, Chem.Atom(replace_atom_list[np.random.randint(0, 10)])
+                )
 
         p += 1
         # print(f"after: {Chem.MolToSmiles(mw)}")
@@ -321,7 +322,7 @@ def delete_atom(_smi):
             raise PermissionError
 
         rnd_insert = np.random.randint(max_len)
-        _new_smi = _smi[:rnd_insert] + _smi[rnd_insert + 1:]
+        _new_smi = _smi[:rnd_insert] + _smi[rnd_insert + 1 :]
         mol_ = Chem.MolFromSmiles(_new_smi)
 
     return _new_smi, mol_
@@ -342,15 +343,15 @@ def add_atom(_smi):
             raise PermissionError
 
         rnd_insert = np.random.randint(max_len)
-        _new_smi = _smi[:rnd_insert] + random.sample(list_atom,
-                                                     1)[0] + _smi[rnd_insert:]
+        _new_smi = (
+            _smi[:rnd_insert] + random.sample(list_atom, 1)[0] + _smi[rnd_insert:]
+        )
         mol_ = Chem.MolFromSmiles(_new_smi)
 
     return _new_smi, mol_
 
 
 def cut_smi(smi1, smi2, func, ring_bool):
-
     l_smi = None
     r_smi = None
 
@@ -378,7 +379,7 @@ def crossover_smiles(smi1, smi2, func, ring_bool):
             raise PermissionError
         try:
             l_smi, r_smi = cut_smi(smi1, smi2, func, ring_bool)
-        except:
+        except Exception:
             pass
 
     gate = 0
@@ -396,12 +397,11 @@ def crossover_smiles(smi1, smi2, func, ring_bool):
 
 
 if __name__ == "__main__":
-
     from multiprocessing import Pool
-    import datetime
-    from rkdit import rdBase
 
-    rdBase.DisableLog('rdApp.*')
+    from rdkit import rdBase
+
+    rdBase.DisableLog("rdApp.*")
 
     _minimum_len = 4
 
@@ -411,15 +411,15 @@ if __name__ == "__main__":
         return Chem.MolToSmiles(mol, kekuleSmiles=True, isomericSmiles=False)
 
     with open(
-            '/home/yongbeom/Git/duaibeom/gen_smiles/data/guacamol_v1_test.smiles'
+        "/home/yongbeom/Git/duaibeom/gen_smiles/data/guacamol_v1_test.smiles"
     ) as f:
         with Pool(8) as pool:
             smiles = pool.map(get_smi, f)
 
     # smiles = smiles[:1000]
-    with open('init.smi', 'w') as f:
+    with open("init.smi", "w") as f:
         for smi in smiles:
-            f.write(f'{smi}\n')
+            f.write(f"{smi}\n")
 
     def just_cut_left_smi(_smi):
         len_smi = len(_smi)
@@ -432,7 +432,6 @@ if __name__ == "__main__":
         return _smi[_start:]
 
     def simple_cut_smi(smi1, smi2):
-
         l_smi = None
         r_smi = None
 
@@ -460,7 +459,7 @@ if __name__ == "__main__":
             try:
                 _smi = simple_cut_smi(smi1, smi2)
                 mol = Chem.MolFromSmiles(_smi)
-            except:
+            except Exception:
                 mol = None
 
         if not mol:
@@ -472,7 +471,7 @@ if __name__ == "__main__":
                 try:
                     _smi = simple_cut_smi(smi2, smi1)
                     mol = Chem.MolFromSmiles(_smi)
-                except:
+                except Exception:
                     mol = None
 
         if mol:
@@ -483,8 +482,8 @@ if __name__ == "__main__":
 
         # if _ % 100000 == 0:
         #     print(f"Success rate: {n_valid/(n_valid + n_fail)*100:.3f}% @{_} Time: {(time.time() - start_time)/60:.3f} min")
-    print(f"Final Success rate: {n_valid/(n_valid + n_fail)*100:.3f}%")
-    print(f"Cost time: {(time.time() - start_time)/60:.3f} min")
+    print(f"Final Success rate: {n_valid / (n_valid + n_fail) * 100:.3f}%")
+    print(f"Cost time: {(time.time() - start_time) / 60:.3f} min")
     # with open('crossover_nothing_swap.smi', 'w') as f:
     #     for smi in smi_list:
     #         f.write(f'{smi}\n')
@@ -508,7 +507,7 @@ if __name__ == "__main__":
             try:
                 _smi = simple_cut_smi(smi1, smi2)
                 mol = Chem.MolFromSmiles(_smi)
-            except:
+            except Exception:
                 mol = None
 
         if mol:
@@ -519,8 +518,8 @@ if __name__ == "__main__":
 
         # if _ % 100000 == 0:
         #     print(f"Success rate: {n_valid/(n_valid + n_fail)*100:.3f}% @{_} Time: {(time.time() - start_time)/60:.3f} min")
-    print(f"Final Success rate: {n_valid/(n_valid + n_fail)*100:.3f}%")
-    print(f"Cost time: {(time.time() - start_time)/60:.3f} min")
+    print(f"Final Success rate: {n_valid / (n_valid + n_fail) * 100:.3f}%")
+    print(f"Cost time: {(time.time() - start_time) / 60:.3f} min")
     # with open('crossover_nothing.smi', 'w') as f:
     #     for smi in smi_list:
     #         f.write(f'{smi}\n')
@@ -538,14 +537,14 @@ if __name__ == "__main__":
         new_smi = None
 
         try:
-            new_smi, mol = crossover_smiles(smi1, smi2,
-                                            prepare_rigid_crossover, True)
+            new_smi, mol = crossover_smiles(smi1, smi2, prepare_rigid_crossover, True)
         except PermissionError:
             pass
         if not mol:
             try:
-                new_smi, mol = crossover_smiles(smi2, smi1,
-                                                prepare_rigid_crossover, True)
+                new_smi, mol = crossover_smiles(
+                    smi2, smi1, prepare_rigid_crossover, True
+                )
             except PermissionError:
                 pass
 
@@ -557,8 +556,8 @@ if __name__ == "__main__":
 
         # if _ % 100000 == 0:
         #     print(f"Success rate: {n_valid/(n_valid + n_fail)*100:.3f}% @{_} Time: {(time.time() - start_time)/60:.3f} min")
-    print(f"Final Success rate: {n_valid/(n_valid + n_fail)*100:.3f}%")
-    print(f"Cost time: {(time.time() - start_time)/60:.3f} min")
+    print(f"Final Success rate: {n_valid / (n_valid + n_fail) * 100:.3f}%")
+    print(f"Cost time: {(time.time() - start_time) / 60:.3f} min")
     # with open('crossover_our_swap.smi', 'w') as f:
     #     for smi in smi_list:
     #         f.write(f'{smi}\n')
@@ -576,8 +575,7 @@ if __name__ == "__main__":
         new_smi = None
 
         try:
-            new_smi, mol = crossover_smiles(smi1, smi2,
-                                            prepare_rigid_crossover, True)
+            new_smi, mol = crossover_smiles(smi1, smi2, prepare_rigid_crossover, True)
         except PermissionError:
             pass
 
@@ -589,8 +587,8 @@ if __name__ == "__main__":
 
         # if _ % 100000 == 0:
         #     print(f"Success rate: {n_valid/(n_valid + n_fail)*100:.3f}% @{_} Time: {(time.time() - start_time)/60:.3f} min")
-    print(f"Final Success rate: {n_valid/(n_valid + n_fail)*100:.3f}%")
-    print(f"Cost time: {(time.time() - start_time)/60:.3f} min")
+    print(f"Final Success rate: {n_valid / (n_valid + n_fail) * 100:.3f}%")
+    print(f"Cost time: {(time.time() - start_time) / 60:.3f} min")
     # with open('crossover_our.smi', 'w') as f:
     #     for smi in smi_list:
     #         f.write(f'{smi}\n')
@@ -605,7 +603,7 @@ if __name__ == "__main__":
         try:
             _smi, _mol = replace_atom(smi1)
             mol = Chem.MolFromSmiles(_smi)
-        except:
+        except Exception:
             mol = None
 
         if mol:
@@ -615,8 +613,8 @@ if __name__ == "__main__":
 
         # if _ % 100000 == 0:
         #     print(f"Success rate: {n_valid/(n_valid + n_fail)*100:.3f}% @{_} Time: {(time.time() - start_time)/60:.3f} min")
-    print(f"Final Success rate: {n_valid/(n_valid + n_fail)*100:.3f}%")
-    print(f"Cost time: {(time.time() - start_time)/60:.3f} min")
+    print(f"Final Success rate: {n_valid / (n_valid + n_fail) * 100:.3f}%")
+    print(f"Cost time: {(time.time() - start_time) / 60:.3f} min")
 
     start_time = time.time()
     print("-- start -- delete atom !")
@@ -628,7 +626,7 @@ if __name__ == "__main__":
         try:
             _smi, _mol = delete_atom(smi1)
             mol = Chem.MolFromSmiles(_smi)
-        except:
+        except Exception:
             mol = None
 
         if mol:
@@ -638,8 +636,8 @@ if __name__ == "__main__":
 
         # if _ % 100000 == 0:
         #     print(f"Success rate: {n_valid/(n_valid + n_fail)*100:.3f}% @{_} Time: {(time.time() - start_time)/60:.3f} min")
-    print(f"Final Success rate: {n_valid/(n_valid + n_fail)*100:.3f}%")
-    print(f"Cost time: {(time.time() - start_time)/60:.3f} min")
+    print(f"Final Success rate: {n_valid / (n_valid + n_fail) * 100:.3f}%")
+    print(f"Cost time: {(time.time() - start_time) / 60:.3f} min")
 
     start_time = time.time()
     print("-- start -- add atom !")
@@ -651,7 +649,7 @@ if __name__ == "__main__":
         try:
             _smi, _mol = add_atom(smi1)
             mol = Chem.MolFromSmiles(_smi)
-        except:
+        except Exception:
             mol = None
 
         if mol:
@@ -661,5 +659,5 @@ if __name__ == "__main__":
 
         # if _ % 100000 == 0:
         #     print(f"Success rate: {n_valid/(n_valid + n_fail)*100:.3f}% @{_} Time: {(time.time() - start_time)/60:.3f} min")
-    print(f"Final Success rate: {n_valid/(n_valid + n_fail)*100:.3f}%")
-    print(f"Cost time: {(time.time() - start_time)/60:.3f} min")
+    print(f"Final Success rate: {n_valid / (n_valid + n_fail) * 100:.3f}%")
+    print(f"Cost time: {(time.time() - start_time) / 60:.3f} min")
