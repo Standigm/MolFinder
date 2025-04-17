@@ -372,7 +372,7 @@ def prepare_seed(solutions, seed):
                 fps1 = get_fp(bank[rnd_number[i], 1])
                 fps2 = get_fp(seed[j][1])
                 dist[j] = TanimotoSimilarity(fps1, fps2)
-            if np.max(dist) > (1 - davg):
+            if dist.size and np.max(dist) > (1 - davg):
                 i += 1
                 # print(f'Dcut !!! {np.max(dist)}')
                 continue
