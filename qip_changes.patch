@@ -1,0 +1,286 @@
+diff --git a/qip/datamodules/featurizers/featurizer.py b/qip/datamodules/featurizers/featurizer.py
+index 226b07a..66f36d8 100644
+--- a/qip/datamodules/featurizers/featurizer.py
++++ b/qip/datamodules/featurizers/featurizer.py
+@@ -1,17 +1,26 @@
+-from rdkit import Chem
+-from rdkit.Chem.rdchem import Atom as rdAtom
+-from rdkit.Chem.rdchem import Bond as rdBond
+ from collections import defaultdict
+-import pandas as pd
++
+ import numpy as np
++import pandas as pd
+ import torch
++from rdkit import Chem
++from rdkit.Chem.rdchem import Atom as rdAtom
++from rdkit.Chem.rdchem import Bond as rdBond
+ from torch_geometric.data import Data
+ 
+ # periodic table mapping
+-PERIODIC_TABLE = pd.read_csv("./periodic_table.csv")
++# PERIODIC_TABLE = pd.read_csv("./periodic_table.csv")
++PERIODIC_TABLE = pd.read_csv(
++    "/db2/users/jingyulee/workspace/MolFinder/external/QIP/periodic_table.csv"
++)
+ 
+-ATOMNUM2GROUP = defaultdict(lambda: -1, {k: v for k, v in PERIODIC_TABLE[["atomic_num", "group"]].values})
+-ATOMNUM2PERIOD = defaultdict(lambda: -1, {k: v for k, v in PERIODIC_TABLE[["atomic_num", "period"]].values})
++
++ATOMNUM2GROUP = defaultdict(
++    lambda: -1, {k: v for k, v in PERIODIC_TABLE[["atomic_num", "group"]].values}
++)
++ATOMNUM2PERIOD = defaultdict(
++    lambda: -1, {k: v for k, v in PERIODIC_TABLE[["atomic_num", "period"]].values}
++)
+ 
+ 
+ def safe_index(l, e):
+@@ -23,10 +32,13 @@ def safe_index(l, e):
+     except:
+         return len(l) - 1
+ 
++
+ VALID_FEATURES_atom_num = tuple(list(range(1, 119)))
+ VALID_FEATURES_group = tuple(list(range(1, 19)))
+ VALID_FEATURES_period = tuple(list(range(1, 7)))
+-VALID_FEATURES_chirality = tuple(["CHI_UNSPECIFIED", "CHI_TETRAHEDRAL_CW", "CHI_TETRAHEDRAL_CCW", "CHI_OTHER"])
++VALID_FEATURES_chirality = tuple(
++    ["CHI_UNSPECIFIED", "CHI_TETRAHEDRAL_CW", "CHI_TETRAHEDRAL_CCW", "CHI_OTHER"]
++)
+ VALID_FEATURES_degree = tuple([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+ VALID_FEATURES_formalcharge = tuple([-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5])
+ VALID_FEATURES_numH = tuple([0, 1, 2, 3, 4, 5, 6, 7, 8])
+@@ -46,10 +58,11 @@ ATOM_FEATURES = [
+     VALID_FEATURES_numradical,
+     VALID_FEATURES_hybridization,
+     VALID_FEATURES_isaromatic,
+-    VALID_FEATURES_isinring
++    VALID_FEATURES_isinring,
+ ]
+ ATOM_FEATURES_DIM = [len(atom_feat) for atom_feat in ATOM_FEATURES]
+ 
++
+ def atom_featurizer(atom: rdAtom):
+     atomic_num = atom.GetAtomicNum()
+     atom_num = safe_index(ATOM_FEATURES[0], atomic_num)
+@@ -63,30 +76,43 @@ def atom_featurizer(atom: rdAtom):
+     atom_hybridization = safe_index(ATOM_FEATURES[8], str(atom.GetHybridization()))
+     atom_isaromatic = safe_index(ATOM_FEATURES[9], atom.GetIsAromatic())
+     atom_isinring = safe_index(ATOM_FEATURES[10], atom.IsInRing())
+-    return [atom_num, atom_group, atom_period, atom_chirality, atom_degree, atom_formalcharge, atom_numH, atom_numradical_e, atom_hybridization, atom_isaromatic, atom_isinring]
++    return [
++        atom_num,
++        atom_group,
++        atom_period,
++        atom_chirality,
++        atom_degree,
++        atom_formalcharge,
++        atom_numH,
++        atom_numradical_e,
++        atom_hybridization,
++        atom_isaromatic,
++        atom_isinring,
++    ]
+ 
+ 
+ VALID_FEATURES_bondtype = tuple(["SINGLE", "DOUBLE", "TRIPLE", "AROMATIC"])
+ VALID_FEATURES_stereo = tuple(
+-        [
+-            "STEREONONE",  # no special style
+-            "STEREOZ",  # Z double bond
+-            "STEREOE",  # E double bond
+-            "STEREOCIS",  # cis double bond
+-            "STEREOTRANS",  # trans double bond
+-            "STEREOANY",  # intentionally unspecified
+-        ]
+-    )
++    [
++        "STEREONONE",  # no special style
++        "STEREOZ",  # Z double bond
++        "STEREOE",  # E double bond
++        "STEREOCIS",  # cis double bond
++        "STEREOTRANS",  # trans double bond
++        "STEREOANY",  # intentionally unspecified
++    ]
++)
+ VALID_FEATURES_isconjugated = tuple([False, True])
+ 
+ BOND_FEATURES = [
+     VALID_FEATURES_bondtype,
+     VALID_FEATURES_stereo,
+-    VALID_FEATURES_isconjugated
++    VALID_FEATURES_isconjugated,
+ ]
+ 
+ BOND_FEATURES_DIM = [len(bond_feat) for bond_feat in BOND_FEATURES]
+ 
++
+ def bond_featurizer(bond: rdBond):
+     bond_type = safe_index(BOND_FEATURES[0], str(bond.GetBondType()))
+     bond_stereo = BOND_FEATURES[1].index(str(bond.GetStereo()))
+@@ -140,14 +166,15 @@ def smiles2graph(smiles):
+     return data
+ 
+ 
+-
++import abc
+ from pathlib import Path
++from typing import Callable
++
++from qip.typing import MOLTYPE, Data, Optional
++
+ # periodic table mapping
+ from qip.utils.molecule import ATOMNUM2GROUP, ATOMNUM2PERIOD
+-from qip.typing import MOLTYPE, Data, Optional
+-from rdkit import Chem
+-import abc
+-from typing import Callable
++
+ 
+ def _default_rdkit_input_parser(smiles_or_path: str):
+     if isinstance(smiles_or_path, str):
+@@ -159,7 +186,9 @@ def _default_rdkit_input_parser(smiles_or_path: str):
+ 
+         if is_path:
+             # if given input is file
+-            raise NotImplementedError(f"Input_parser for {str(path)} is not implemented")
++            raise NotImplementedError(
++                f"Input_parser for {str(path)} is not implemented"
++            )
+         else:
+             mol = Chem.MolFromSmiles(smiles_or_path)
+     else:
+@@ -183,7 +212,9 @@ class FeaturizerBase(abc.ABC):
+         elif isinstance(parser_func, Callable):
+             self._input_parser = parser_func
+         else:
+-            raise ValueError(f"input_parser should be Callable Object but got {type(parser_func)}")
++            raise ValueError(
++                f"input_parser should be Callable Object but got {type(parser_func)}"
++            )
+ 
+     @property
+     def preprocess(self) -> Optional[Callable[[MOLTYPE], MOLTYPE]]:
+@@ -196,7 +227,9 @@ class FeaturizerBase(abc.ABC):
+         elif isinstance(preprocess_fn, Callable):
+             self._preprocess = preprocess_fn
+         else:
+-            raise ValueError(f"preprocess should be Callable Object but got {type(preprocess_fn)}")
++            raise ValueError(
++                f"preprocess should be Callable Object but got {type(preprocess_fn)}"
++            )
+ 
+     def __call__(self, smiles_or_path: str) -> Data:
+         mol = self.input_parser(smiles_or_path)
+@@ -205,7 +238,10 @@ class FeaturizerBase(abc.ABC):
+         return data
+ 
+     def __repr__(self) -> str:
+-        _attributes = sorted([(k, v) for k, v in self.__dict__.items() if not k.startswith("_")], key=lambda x: x[0])
++        _attributes = sorted(
++            [(k, v) for k, v in self.__dict__.items() if not k.startswith("_")],
++            key=lambda x: x[0],
++        )
+         fields = [f"{k}={v}" for (k, v) in _attributes]
+         return self.__class__.__name__ + "(" + ", ".join(fields) + ")"
+ 
+@@ -217,6 +253,7 @@ class QIPFeaturizer(FeaturizerBase):
+ 
+         return graph
+ 
++
+ class FeaturizerMixin:
+     @property
+     def featurizer(self) -> Optional[FeaturizerBase]:
+@@ -230,9 +267,8 @@ class FeaturizerMixin:
+             raise ValueError(f"Invalid featurizer type: {type(featurizer_obj)}")
+ 
+ 
+-
+-if __name__=="__main__":
+-    mol = Chem.MolFromSmiles('c1ccccc1')
++if __name__ == "__main__":
++    mol = Chem.MolFromSmiles("c1ccccc1")
+     for atom in mol.GetAtoms():
+         break
+     for bond in mol.GetBonds():
+@@ -241,6 +277,3 @@ if __name__=="__main__":
+     bond_feats = bond_featurizer(bond)
+     print(atom_feats, len(atom_feats))
+     print(bond_feats, len(bond_feats))
+-
+-    
+-    
+\ No newline at end of file
+diff --git a/qip/utils/molecule.py b/qip/utils/molecule.py
+index 9104831..b04743f 100644
+--- a/qip/utils/molecule.py
++++ b/qip/utils/molecule.py
+@@ -1,18 +1,23 @@
+ from collections import defaultdict
+-from pathlib import Path
+ 
++import numpy as np
+ import pandas as pd
+-
+ from rdkit import Chem
+-from rdkit.Chem import Descriptors, rdMolDescriptors
++from rdkit.Chem import rdMolDescriptors
+ from rdkit.ML.Descriptors.MoleculeDescriptors import MolecularDescriptorCalculator
+-from qip.typing import Data
+-import numpy as np
++
+ # periodic table mapping
+-PERIODIC_TABLE = pd.read_csv(Path(__file__).parent / "periodic_table.csv")
++# PERIODIC_TABLE = pd.read_csv(Path(__file__).parent / "periodic_table.csv")
++PERIODIC_TABLE = pd.read_csv(
++    "/db2/users/jingyulee/workspace/MolFinder/external/QIP/qip/utils/periodic_table.csv"
++)
+ 
+-ATOMNUM2GROUP = defaultdict(lambda: -1, {k: v for k, v in PERIODIC_TABLE[["atomic_num", "group"]].values})
+-ATOMNUM2PERIOD = defaultdict(lambda: -1, {k: v for k, v in PERIODIC_TABLE[["atomic_num", "period"]].values})
++ATOMNUM2GROUP = defaultdict(
++    lambda: -1, {k: v for k, v in PERIODIC_TABLE[["atomic_num", "group"]].values}
++)
++ATOMNUM2PERIOD = defaultdict(
++    lambda: -1, {k: v for k, v in PERIODIC_TABLE[["atomic_num", "period"]].values}
++)
+ 
+ 
+ # non = np.array(['kappa3', 'MaxPartialCharge', 'MinPartialCharge',
+@@ -24,7 +29,8 @@ ATOMNUM2PERIOD = defaultdict(lambda: -1, {k: v for k, v in PERIODIC_TABLE[["atom
+ # descriptor_list = np.setdiff1d(descriptor_list, non)
+ # descriptor_names = np.array(rdMolDescriptors.Properties.GetAvailableProperties())
+ # descriptor_names = np.setdiff1d(descriptor_names, non)
+-    
++
++
+ # Get RDkit descriptors
+ def get_descriptors_from_smiles(smiles):
+     mol = Chem.MolFromSmiles(smiles)
+@@ -39,7 +45,14 @@ def get_rdmol_descriptors_from_smiles(smiles):
+     descriptor_names = np.array(rdMolDescriptors.Properties.GetAvailableProperties())
+     get_descriptors = rdMolDescriptors.Properties(descriptor_names)
+     if mol:
+-        descriptors.update({k: v for k, v in zip(descriptor_names, get_descriptors.ComputeProperties(mol))})
++        descriptors.update(
++            {
++                k: v
++                for k, v in zip(
++                    descriptor_names, get_descriptors.ComputeProperties(mol)
++                )
++            }
++        )
+     return descriptors
+ 
+ 
+@@ -56,7 +69,7 @@ def validate_smiles_rdkit(smiles: str, sanitize=True):
+     try:
+         mol = Chem.MolFromSmiles(smiles, sanitize=sanitize)
+         return False if mol is None else True
+-    except Exception as e:
++    except Exception:
+         return False
+ 
+ 

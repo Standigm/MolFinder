@@ -41,9 +41,56 @@ dimorphite-dl = ">=1.3.2, <2"
 pkasolver = { git = "https://github.com/Standigm/pkasolver" }
 
 [feature.stella.tasks]
+# Update patch files when there are changes in the external libraries
+# Execute `pixi run xxx_diff` to create patch files after modifying the external libraries
+# Warning: If the patching/installation tasks are executed when 
+# the external libraries were modified without updating the patch files,
+# the modifications will be lost.
+ligprep_diff = { cmd = [
+    "git",
+    "diff",
+    ">",
+    "../../ligprep_changes.patch",
+], cwd = "external/ligprep" }
+qip_diff = { cmd = [
+    "git",
+    "diff",
+    ">",
+    "../../qip_changes.patch",
+], cwd = "external/QIP" }
+
+# Apply patch files to the external libraries
+# These will fail unless the external libraries are unmodified
+ligprep_patch = { cmd = [
+    "git",
+    "apply",
+    "../../ligprep_changes.patch",
+], cwd = "external/ligprep" }
+qip_patch = { cmd = [
+    "git",
+    "apply",
+    "../../qip_changes.patch",
+], cwd = "external/QIP" }
+
+# Install external libraries
+# NOTE: External libraries are not patched. 
 ligprep = { cmd = ["python", "-m", "pip", "install", "external/ligprep"] }
 qip = { cmd = ["python", "-m", "pip", "install", "external/QIP"] }
 ext = { cmd = ["echo", "'done'"], depends-on = ["ligprep", "qip"] }
+
+# Setup external libraries
+# Patches are applied and external libraries are installed
+# NOTE: This should only be used when setting up the environment for the first time
+# As stated above, xxx_patch tasks will fail unless the external libraries are unmodified
+ext_setup = { cmd = [
+    "echo",
+    "'done'",
+], depends-on = [
+    "ligprep_patch",
+    "qip_patch",
+    "ligprep",
+    "qip",
+] }
 
 # Seems like all solve-groups depend on default
 # [feature.py37.dependencies]

@@ -13,15 +13,19 @@ Copyright 2021 Yong-beom Kwon and Ju-yong Lee. All rights reserved.
 MolFinder finds diverse molecules with desired properties efficiently without any training and a large molecular database. Also, it does not require a lot of computing resources. This repository contains MolFinder's code and results. MolFinder consists of a simple executable file, `molfinder`, and crossover and mutation process file `ModSMI.py`.
 
 ## Getting Started
+
 ### Prerequisites
-* `python` == 3.7.*
-* `rdkit` >= 2019.09.3.0+
-* `pandas`
-* `numpy`
-* `matplotlib`
+
+- `python` == 3.7.\*
+- `rdkit` >= 2019.09.3.0+
+- `pandas`
+- `numpy`
+- `matplotlib`
 
 ### Installation instructions
+
 We recommand to use anaconda3 virtual-env; simplest way
+
 ```
 conda create -n molfinder_venv python=3.7
 conda activate molfinder_venv
@@ -29,10 +33,35 @@ conda install -c rdkit rdkit
 conda install pandas numpy
 ```
 
+### Installation Instructions for the STELLA study
+
+Pixi was used to set up the environment.
+
+```sh
+pixi install
+# Update and install submodules
+pixi run ext_setup
+```
+
+If changes are made to the submodules, the below command **MUST BE RUN**.
+
+```sh
+# If submodule XXX was modified, first update the patch file:
+pixi run XXX_diff
+# Then re-install the submodule
+pixi run XXX
+```
+
+If a modified submodule is reinstalled without updating its patch file,
+the modifications **WILL BE LOST**.
+
 ## Quickstart
+
 ### 0. Prepare dataset
+
 Prepare a SMILES file in CSV format. **The first column must be SMILES.**  
 (Contains headers, It doesn't have to be just only SMILES.)
+
 ```
 SMILES
 CCN(CC)CCN(C(=O)c1ccc(CCC(F)(F)F)cc1)[C@H]1CCS(=O)(=O)C1
@@ -45,28 +74,27 @@ O=C(CCN1C(=O)[C@H]2CCCC[C@@H]2C1=O)NC1CCN(CC(F)(F)F)CC1
 ```
 
 ### 1. Run MolFinder algorithm
+
 ```
 ./molfinder -i sample.csv --max-round 5
 ```
 
 ## Parameters of MolFinder
-* `-i, --input`: (`str`) SMILES file (csv format) used by the model
-* `-r, --random-seed`: (`int`, None) Determines the random number that selects the initial molecules
-  
-* `--bank-size`: (`int`, 100) Bank size used in the algorithm 
-* `--seed-size`: (`int`, 60) The number of parent molecules used to generate child molecules
-  
-* `-dist, --dist-coef`: (`float`, 0.90) Adjust the $D_{avg}$ value
 
-* `--max-round`: (`int`, 150) The maximum number of round
-* `-cvg, --convergent-round`: (`int`, 150) Determines how many rounds the Dcut will converge
-  
-* `-c, --coefficient`: (`float`, 0.9) Coefficient of objective function
-* `--target`: (`SMILES: str`, None) Target molecule 
+- `-i, --input`: (`str`) SMILES file (csv format) used by the model
+- `-r, --random-seed`: (`int`, None) Determines the random number that selects the initial molecules
+- `--bank-size`: (`int`, 100) Bank size used in the algorithm
+- `--seed-size`: (`int`, 60) The number of parent molecules used to generate child molecules
+- `-dist, --dist-coef`: (`float`, 0.90) Adjust the $D_{avg}$ value
 
-* `-fp, --fp-method`: (`str`, rdkit) Fingerprint method; Morgan or RDKit (default)
+- `--max-round`: (`int`, 150) The maximum number of round
+- `-cvg, --convergent-round`: (`int`, 150) Determines how many rounds the Dcut will converge
+- `-c, --coefficient`: (`float`, 0.9) Coefficient of objective function
+- `--target`: (`SMILES: str`, None) Target molecule
 
-* `-v, --verbosity`: Print RDKit Error message.
+- `-fp, --fp-method`: (`str`, rdkit) Fingerprint method; Morgan or RDKit (default)
+
+- `-v, --verbosity`: Print RDKit Error message.
 
 ```shell
 # Parameters of paper results
@@ -74,10 +102,12 @@ molfinder -r 12345678 --bank-size 1000 --seed-size 600 -dist 0.90 -c 0.994 -i sa
 ```
 
 ## Set objective fucntion
+
 1. Find `@@FEATURES` in `molfinder`, Set your features.
 2. Find `@@REWARD` in `molfinder`, Modifiy your objective function.
 
 ## Component of MolFinder
+
 ```
 MolFinder Algorithm
 ├── molfinder
@@ -96,7 +126,8 @@ MolFinder Algorithm
 
 ## References
 
-* paper: https://doi.org/10.1186/s13321-021-00501-7
+- paper: https://doi.org/10.1186/s13321-021-00501-7
 
 ---
+
 This is my first code and was mainly written in February 2020. There are many drawbacks, but I keep learning and trying.
