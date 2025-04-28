@@ -5,19 +5,9 @@ from tempfile import NamedTemporaryFile
 
 import pandas as pd
 
-admet_list = [
-    "caco2_wang",
-    "solubility_aqsoldb",
-    "ppbr_az",
-    "cyp2d6_veith",
-    "cyp3a4_veith",
-    "cyp2c9_veith",
-    "cyp3a4_substrate_carbonmangels",
-    "cyp2c9_substrate_carbonmangels",
-    "cyp2d6_substrate_carbonmangels",
-    "clearance_hepatocyte_az",
-    "herg",
-]
+from ...scoring.sigmoid import qip_components
+
+admet_list = ["inchikey"] + list(qip_components.keys())
 
 
 def get_env_path():
