@@ -339,6 +339,20 @@ def filter_sdf(
     return subset_sdf_path
 
 
+def concat_sdf(
+    input_files: Union[List[Path], List[str]], output_file: Union[Path, str]
+):
+    ofs = oechem.oemolostream(str(output_file))
+
+    for input_file in input_files:
+        ifs = oechem.oemolistream(str(input_file))
+
+        for mol in ifs.GetOEMols():
+            oechem.OEWriteMolecule(ofs, mol)
+
+    ofs.close()
+
+
 def get_best_scores_from_sdf(
     input_sdf_path: Union[Path, str],
     select_by: str,
@@ -346,7 +360,8 @@ def get_best_scores_from_sdf(
     output_sdf_path: Optional[Union[Path, str]] = None,
     smiles_inchi_df: Optional[pd.DataFrame] = None,
     backfill_value: float = 0,
-) -> List[float]:
+) -> pd.DataFrame:
+    # ) -> List[float]:
     """_summary_
 
     Args:
@@ -369,42 +384,44 @@ def get_best_scores_from_sdf(
         .head(1)
         .sort_index()
     )
-    best_indices = best_rows.index.to_list()
-    if output_sdf_path:
-        subset_sdf(input_sdf_path, str(output_sdf_path), best_indices, verbose=False)
+    return best_rows
+    # best_indices = best_rows.index.to_list()
 
-    if not isinstance(smiles_inchi_df, pd.DataFrame):
-        return best_rows[select_by].values.tolist()
+    # if output_sdf_path:
+    #     subset_sdf(input_sdf_path, str(output_sdf_path), best_indices, verbose=False)
 
-    scores = []
-    missing = []
-    inchikeys = smiles_inchi_df["inchikey"].values
-    for inchi in inchikeys:
-        if inchi in best_rows["inchikey"].values:
-            score = best_rows.loc[best_rows["inchikey"] == inchi, select_by].values[0]  # type: ignore
-        else:
-            missing.append(inchi)
-            score = backfill_value
-        scores.append(score)
+    # if not isinstance(smiles_inchi_df, pd.DataFrame):
+    #     return best_rows[select_by].values.tolist()
 
-    if missing:
-        print(
-            "Inchikeys missing from %s were assigned scores of %s",
-            Path(input_sdf_path).name,
-            backfill_value,
-        )
+    # scores = []
+    # missing = []
+    # inchikeys = smiles_inchi_df["inchikey"].values
+    # for inchi in inchikeys:
+    #     if inchi in best_rows["inchikey"].values:
+    #         score = best_rows.loc[best_rows["inchikey"] == inchi, select_by].values[0]  # type: ignore
+    #     else:
+    #         missing.append(inchi)
+    #         score = backfill_value
+    #     scores.append(score)
 
-        # If output_sdf_path is provided, write missing inchikeys to a file in the output dir
-        if output_sdf_path:
-            output_sdf_path = Path(output_sdf_path)
-            missing_inchikeys_file = (
-                output_sdf_path.parent / f"{output_sdf_path.stem}_missing.csv"
-            )
-            smiles_inchi_df[smiles_inchi_df["inchikey"].isin(missing)].to_csv(
-                missing_inchikeys_file, index=False
-            )
-            print("Missing inchikeys written to %s", missing_inchikeys_file)
-        else:
-            print("Missing inchikeys: %s", missing)
+    # if missing:
+    #     print(
+    #         "Inchikeys missing from %s were assigned scores of %s",
+    #         Path(input_sdf_path).name,
+    #         backfill_value,
+    #     )
 
-    return scores
+    #     # If output_sdf_path is provided, write missing inchikeys to a file in the output dir
+    #     if output_sdf_path:
+    #         output_sdf_path = Path(output_sdf_path)
+    #         missing_inchikeys_file = (
+    #             output_sdf_path.parent / f"{output_sdf_path.stem}_missing.csv"
+    #         )
+    #         smiles_inchi_df[smiles_inchi_df["inchikey"].isin(missing)].to_csv(
+    #             missing_inchikeys_file, index=False
+    #         )
+    #         print("Missing inchikeys written to %s", missing_inchikeys_file)
+    #     else:
+    #         print("Missing inchikeys: %s", missing)
+
+    # return scores

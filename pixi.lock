@@ -180,6 +180,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/certifi-2024.8.30-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/cffi-1.14.4-py38ha312104_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/charset-normalizer-3.4.0-pyhd8ed1ab_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/cloudpickle-3.1.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/colorama-0.4.6-pyhd8ed1ab_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/colorlog-6.9.0-pyh707e725_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/contourpy-1.1.1-py38h7f3f72f_1.conda
@@ -380,6 +381,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/sqlite-3.46.0-h6d4b2fc_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/stack_data-0.6.2-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/statsmodels-0.14.1-py38h7f0c24c_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/submitit-1.5.2-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/svgutils-0.3.4-pyhd8ed1ab_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/sympy-1.13.3-pyh04b8f61_4.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tbb-2021.7.0-h924138e_0.tar.bz2
@@ -830,6 +832,17 @@ packages:
   - pkg:pypi/charset-normalizer?source=hash-mapping
   size: 47314
   timestamp: 1728479405343
+- conda: https://conda.anaconda.org/conda-forge/noarch/cloudpickle-3.1.0-pyhd8ed1ab_1.conda
+  sha256: 5a33d0d3ef33121c546eaf78b3dac2141fc4d30bbaeb3959bbc66fcd5e99ced6
+  md5: c88ca2bb7099167912e3b26463fff079
+  depends:
+  - python >=3.8
+  license: BSD-3-Clause
+  license_family: BSD
+  purls:
+  - pkg:pypi/cloudpickle?source=hash-mapping
+  size: 25952
+  timestamp: 1729059365471
 - conda: https://conda.anaconda.org/conda-forge/noarch/colorama-0.4.6-pyhd8ed1ab_0.tar.bz2
   sha256: 2c1b2e9755ce3102bca8d69e8f26e4f087ece73f50418186aee7c74bef8e1698
   md5: 3faab06a954c2a04039983f2c4a50d99
@@ -3525,6 +3538,19 @@ packages:
   - pkg:pypi/statsmodels?source=hash-mapping
   size: 11049550
   timestamp: 1702575783604
+- conda: https://conda.anaconda.org/conda-forge/noarch/submitit-1.5.2-pyhd8ed1ab_0.conda
+  sha256: 96920e92a15ded35bcbe042a7272ed67727ce0cc3276f410dfd4dc30483bb559
+  md5: df0323db1008e83e3e4003b70214b958
+  depends:
+  - cloudpickle >=1.2.1
+  - python >=3.6
+  - typing_extensions >=3.7.4.2
+  license: MIT
+  license_family: MIT
+  purls:
+  - pkg:pypi/submitit?source=hash-mapping
+  size: 59492
+  timestamp: 1731977337763
 - conda: https://conda.anaconda.org/conda-forge/noarch/svgutils-0.3.4-pyhd8ed1ab_0.tar.bz2
   sha256: 44dbef699f8217cde541e4582ea698fca85e7fe955b5d1efce62b342f7426c9c
   md5: 3ba1e173672fc800ecadac19f28a273a
