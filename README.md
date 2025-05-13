@@ -37,19 +37,35 @@ conda install pandas numpy
 
 Pixi was used to set up the environment.
 
+#### If running the original version of MolFinder:
+
 ```sh
 pixi install
-# Update and install submodules
-pixi run ext_setup
 ```
+
+#### If running MolFinder in STELLA mode:
+
+```sh
+pixi install -e stella
+# Update and install submodules
+pixi run -e stella ext_setup
+# If ext_setup has already been run in pixi's stella environment,
+# run ext instead of ext_setup
+pixi run -e stella ext
+```
+
+Note: when developing/running MolFinder's STELLA mode, all pixi commands must include `-e stella`.
+The default pixi environment does not include STELLA-specific dependencies.
+
+---
 
 If changes are made to the submodules, the below command **MUST BE RUN**.
 
 ```sh
 # If submodule XXX was modified, first update the patch file:
-pixi run XXX_diff
+pixi run -e stella XXX_diff
 # Then re-install the submodule
-pixi run XXX
+pixi run -e stella XXX
 ```
 
 If a modified submodule is reinstalled without updating its patch file,
@@ -78,6 +94,23 @@ O=C(CCN1C(=O)[C@H]2CCCC[C@@H]2C1=O)NC1CCN(CC(F)(F)F)CC1
 ```
 ./molfinder -i sample.csv --max-round 5
 ```
+
+- With pixi
+
+```sh
+# Option 1: run molfinder in the pixi environment
+pixi run ./molfinder ...
+```
+
+```sh
+# Option 2: create a pixi shell first
+pixi shell
+
+# in the new shell:
+./molfinder ...
+```
+
+Again, if running MolFinder in STELLA mode, remember to add `-e stella` to pixi commands.
 
 ## Parameters of MolFinder
 
