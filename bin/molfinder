@@ -11,12 +11,16 @@ import pandas as pd
 from rdkit import Chem, rdBase
 from rdkit.Chem import QED, AllChem, RDConfig
 from rdkit.Chem.Crippen import MolLogP
+from rdkit.Chem.Descriptors import MolWt
 from rdkit.DataStructs import TanimotoSimilarity
 
 sys.path.append(os.path.join(RDConfig.RDContribDir, "SA_Score"))
 
 import ModSMI
 import sascorer
+
+# Change from relative import to absolute import
+from scoring.sigmoid import obj_weights, sigmoid_funcs
 
 parser = argparse.ArgumentParser(
     description="This python script is made by Yongbeom Kwon"
@@ -131,32 +135,33 @@ Features must accept a rdkit Mol and return a number.
 2. Add your functions
 """
 
-# The number of features
-nfeatures = 2
-
 
 # Set your functions.
-def feature_sascore(x):
+def feature_sascore(x: Chem.Mol):
     return sascorer.calculateScore(x)
 
 
-def feature1a(x):
+def feature1a(x: Chem.Mol):
     return 1 - (sascorer.calculateScore(x) - 1) / 9
 
 
-def feature_qed(x):
+def feature_qed(x: Chem.Mol):
     return QED.default(x)
 
 
-def feature_tanimoto_similiarity(x):
+def feature_tanimoto_similiarity(x: Chem.Mol):
     return TanimotoSimilarity(_get_fp(x), target_fps)  # similarity
 
 
-def feature_alogp(x):
+def feature_alogp(x: Chem.Mol):
     return MolLogP(Chem.RemoveHs(x))
 
 
-def feature5(x):  # RingPenalty
+def feature_molecular_weight(x: Chem.Mol):
+    return MolWt(Chem.RemoveHs(x))
+
+
+def feature5(x: Chem.Mol):  # RingPenalty
     ring_list = x.GetRingInfo().AtomRings()
     if ring_list:
         ring_length = max([len(j) for j in ring_list])
@@ -174,10 +179,77 @@ def feature5(x):  # RingPenalty
 Modify the cal_features function; Index 0, 1, and 2 are fixed.
 You need to put the desired features after index 3 of the returned list.
 Then modify obj_fn and column_name to suit your purpose.
+
+cal_features is called in the init_bank and append_seed functions.
+append_seed is in turn called in the prepare_child function.
+
+obj_fn is called in the prepare_seed and update_bank functions.
+obj_fn is called multiple times; it should not involve any heavy calculations.
+
 """
-if args.target:  # TARGET Molecule VESRSION
+
+# TODO: WIP
+if args.target == "stella":
+    # The number of features
+    # The +2 accounts for the molecular weight and the associated boolean flag
+    nfeatures = len(sigmoid_funcs) + 2
+
+    def cal_features(_smi, _mol, max_mol_wt=600):
+        mol_wt = feature_molecular_weight(_mol)
+        if mol_wt > max_mol_wt:
+            # smiles / mol / availability / MolWt / MolWt > 600 / SAS / QED / AlogP
+            return [_smi, _mol, True, mol_wt, False, 0, 0, 0]
+
+        features = [
+            _smi,
+            _mol,
+            True,
+            mol_wt,
+            True,
+            feature_sascore(_mol),
+            feature_qed(_mol),
+            feature_alogp(_mol),
+        ]
+
+        return features
+
+    def obj_fn(x: np.ndarray):
+        # Create output array of zeros with same length as input
+        result = np.zeros(len(x))
+
+        # Get mask of valid molecules (where x[:, 4] is True)
+        valid_mask = x[:, 4].astype(bool)
+
+        # Only process valid molecules
+        if not np.any(valid_mask):
+            return result
+
+        valid_rows = x[valid_mask]  # shape: (n_valid, n_features)
+
+        # Apply sigmoid transforms and collect them into a (n_valid, n_props) matrix
+        transformed_matrix = np.stack(
+            [func(valid_rows[:, i + 5]) for i, func in enumerate(sigmoid_funcs)],
+            axis=1,  # stack columns
+        )
+
+        # Weighted sum across properties
+        scores = transformed_matrix @ obj_weights  # (n_valid,)
+
+        # Invert the scores, as STELLA scores are better when lower,
+        # but MolFinder wants to maximize the score.
+        scores = sum(obj_weights) - scores
+
+        result[valid_mask] = scores
+
+        return result
+
+elif args.target:  # TARGET Molecule VERSION
     # Modify the cal_features function; Index 0, 1, and 2 are fixed.
     # You need to put the desired features after index 3 of the returned list.
+
+    # The number of features
+    nfeatures = 2
+
     def cal_features(_smi, _mol):  # set data_column
         return [_smi, _mol, True, feature_qed(_mol), feature_tanimoto_similiarity(_mol)]
 
@@ -195,6 +267,10 @@ if args.target:  # TARGET Molecule VESRSION
 else:  # Non-TARGET Molecule VESRSION
     # Modify the cal_features function; Index 0, 1, and 2 are fixed.
     # You need to put the desired features after index 3 of the returned list.
+
+    # The number of features
+    nfeatures = 2
+
     def cal_features(_smi, _mol):  # set data_column
         return [_smi, _mol, True, feature_sascore(_mol), feature_qed(_mol)]
 
@@ -468,7 +544,37 @@ def append_seed(_smi, _mol, update_solution):
         return 0
 
 
-def prepare_child(seed, nCross1=20, nCross2=20, nReplace=10, nAdd=10, nRemove=10):
+def prepare_child(
+    seed, nCross1=20, nCross2=20, nReplace=10, nAdd=10, nRemove=10
+) -> np.ndarray:
+    """Generate new candidate molecules by applying various
+    molecular transformations to the parent "seed" molecules
+
+    Parameters
+    ----------
+    seed : _type_
+        An array of parent molecules selected by the prepare_seed function
+    nCross1 : _type_, optional
+        Number of rigid ring-preserving crossovers to attempt per seed (default: 20)
+    nCross2 : _type_, optional
+        Number of rigid non-ring-preserving crossovers to attempt per seed (default: 20)
+    nReplace : _type_, optional
+        Number of atom replacements to attempt per seed (default: 10)
+    nAdd : _type_, optional
+        Number of atom additions to attempt per seed (default: 10)
+    nRemove : _type_, optional
+        Number of atom removals to attempt per seed (default: 10)
+
+    Returns
+    -------
+    _type_
+        _description_
+
+    Raises
+    ------
+    Exception
+        _description_
+    """
     update_solution = []
     # print(seed[:, 0])
     for i in range(seed.shape[0]):
@@ -639,7 +745,7 @@ def prepare_local_child(_smi, nReplace=10, nAdd=10, nRemove=10):
     return np.asarray(update_solution)
 
 
-def update_bank(child_solutions, local_opt=False):
+def update_bank(child_solutions, local_opt=False, similarity_threshold=0.98):
     cnt_replace = 0
     bank_min = np.min(obj_fn(bank))
     child_solutions = child_solutions[obj_fn(child_solutions) > bank_min]
@@ -671,7 +777,7 @@ def update_bank(child_solutions, local_opt=False):
                     cnt_replace += 1
             else:
                 _min = np.argmin(obj_fn(bank))
-                if (max_similarity < 0.98) and (
+                if (max_similarity < similarity_threshold) and (
                     obj_fn(bank[_min : _min + 1]) < final_avg.mean()
                 ):
                     if obj_fn(local_solutions[x : x + 1]) > obj_fn(
@@ -686,7 +792,7 @@ def update_bank(child_solutions, local_opt=False):
                     cnt_replace += 1
             else:
                 _min = np.argmin(obj_fn(bank))
-                if (max_similarity < 0.98) and (
+                if (max_similarity < similarity_threshold) and (
                     obj_fn(bank[_min : _min + 1]) < final_avg.mean()
                 ):
                     if obj_fn(child_solutions[i : i + 1]) > obj_fn(
@@ -716,6 +822,9 @@ if __name__ == "__main__":
         nbank,
         rseed=args.random_seed,
     )  # zinc
+
+    # TODO: compute ADMET/ligprep/ROCS/Gold on bank
+    # Append results from features.calculate.calculate
 
     chk_load = chk_load.get()
 
@@ -786,6 +895,10 @@ if __name__ == "__main__":
             # log_f.write(f'## CHILD ### @ {np.count_nonzero(bank[:, 2] == True)} #############\n')
             time_child = ChkTime()
             child_solutions = prepare_child(seed)
+
+            # TODO: compute ADMET/ligprep/ROCS/Gold on child_solutions
+            # Append results from features.calculate.calculate
+
             shuffled_index_ = np.random.permutation(
                 child_solutions.shape[0]
             )  # @4 에서 추가 됨.
