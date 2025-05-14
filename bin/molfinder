@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+from dataclasses import dataclass
 import os
 import sys
 import time
@@ -9,18 +10,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from rdkit import Chem, rdBase
-from rdkit.Chem import QED, AllChem, RDConfig
-from rdkit.Chem.Crippen import MolLogP
-from rdkit.Chem.Descriptors import MolWt
+from rdkit.Chem import RDConfig
 from rdkit.DataStructs import TanimotoSimilarity
+from molfinder_bank import init_bank
+from features.calculate import (
+    cal_features,
+    NUM_FEATURES,
+    FEATURE_COLUMNS,
+    compute_feature_of_bank,
+    obj_fn,
+)
+from distance import cal_avg_dist, cal_rnd_avg_dist, get_fp
 
 sys.path.append(os.path.join(RDConfig.RDContribDir, "SA_Score"))
 
 import ModSMI
-import sascorer
-
-# Change from relative import to absolute import
-from scoring.sigmoid import obj_weights, sigmoid_funcs
 
 parser = argparse.ArgumentParser(
     description="This python script is made by Yongbeom Kwon"
@@ -88,89 +92,20 @@ parser.add_argument(
     default="rdkit",
     help="Select Fingerprint Method (rdkit/morgan)",
 )
-# parser.add_argument(
-#     "-nf", "--nfeatures", metavar="N", type=int, default=2, help="a number of features"
-# )
 parser.add_argument("-v", "--verbosity", action="count", default=0, help="print error")
 args = parser.parse_args()
 
 if args.verbosity == 0:
     rdBase.DisableLog("rdApp.*")
 
-fp_method = args.fp_method
-
-if fp_method == "rdkit":
-
-    def _get_fp(x):
-        return Chem.RDKFingerprint(x)
-elif fp_method == "morgan":
-
-    def _get_fp(x):
-        return AllChem.GetMorganFingerprintAsBitVect(x, 2)
-elif fp_method == "morgan1024":
-
-    def _get_fp(x):
-        return AllChem.GetMorganFingerprintAsBitVect(x, 2, nBits=1024)
-elif fp_method == "morgan2048":
-
-    def _get_fp(x):
-        return AllChem.GetMorganFingerprintAsBitVect(x, 2, nBits=2048)
-
-
-def get_fp(mol_or_smi):
-    if isinstance(mol_or_smi, (Chem.rdchem.Mol, Chem.rdchem.RWMol)):
-        _mol = mol_or_smi
-    elif isinstance(mol_or_smi, str):
-        _mol = Chem.MolFromSmiles(mol_or_smi)
-    else:
-        raise ValueError("This type is not allowed.")
-    return _get_fp(_mol)
-
 
 # -------------------------------------------------------- #
 """
 @@FEATURES
-Features must accept a rdkit Mol and return a number.
-1. Set nfeatures
+Features must return a number.
+1. Set NUM_FEATURES
 2. Add your functions
 """
-
-
-# Set your functions.
-def feature_sascore(x: Chem.Mol):
-    return sascorer.calculateScore(x)
-
-
-def feature1a(x: Chem.Mol):
-    return 1 - (sascorer.calculateScore(x) - 1) / 9
-
-
-def feature_qed(x: Chem.Mol):
-    return QED.default(x)
-
-
-def feature_tanimoto_similiarity(x: Chem.Mol):
-    return TanimotoSimilarity(_get_fp(x), target_fps)  # similarity
-
-
-def feature_alogp(x: Chem.Mol):
-    return MolLogP(Chem.RemoveHs(x))
-
-
-def feature_molecular_weight(x: Chem.Mol):
-    return MolWt(Chem.RemoveHs(x))
-
-
-def feature5(x: Chem.Mol):  # RingPenalty
-    ring_list = x.GetRingInfo().AtomRings()
-    if ring_list:
-        ring_length = max([len(j) for j in ring_list])
-        if ring_length <= 6:
-            return 0
-        else:
-            return ring_length - 6
-    else:
-        return 0
 
 
 # SET REWARD function #################################### #
@@ -179,112 +114,10 @@ def feature5(x: Chem.Mol):  # RingPenalty
 Modify the cal_features function; Index 0, 1, and 2 are fixed.
 You need to put the desired features after index 3 of the returned list.
 Then modify obj_fn and column_name to suit your purpose.
-
-cal_features is called in the init_bank and append_seed functions.
-append_seed is in turn called in the prepare_child function.
-
-obj_fn is called in the prepare_seed and update_bank functions.
-obj_fn is called multiple times; it should not involve any heavy calculations.
-
 """
 
-# TODO: WIP
-if args.target == "stella":
-    # The number of features
-    # The +2 accounts for the molecular weight and the associated boolean flag
-    nfeatures = len(sigmoid_funcs) + 2
-
-    def cal_features(_smi, _mol, max_mol_wt=600):
-        mol_wt = feature_molecular_weight(_mol)
-        if mol_wt > max_mol_wt:
-            # smiles / mol / availability / MolWt / MolWt > 600 / SAS / QED / AlogP
-            return [_smi, _mol, True, mol_wt, False, 0, 0, 0]
-
-        features = [
-            _smi,
-            _mol,
-            True,
-            mol_wt,
-            True,
-            feature_sascore(_mol),
-            feature_qed(_mol),
-            feature_alogp(_mol),
-        ]
-
-        return features
-
-    def obj_fn(x: np.ndarray):
-        # Create output array of zeros with same length as input
-        result = np.zeros(len(x))
-
-        # Get mask of valid molecules (where x[:, 4] is True)
-        valid_mask = x[:, 4].astype(bool)
-
-        # Only process valid molecules
-        if not np.any(valid_mask):
-            return result
-
-        valid_rows = x[valid_mask]  # shape: (n_valid, n_features)
-
-        # Apply sigmoid transforms and collect them into a (n_valid, n_props) matrix
-        transformed_matrix = np.stack(
-            [func(valid_rows[:, i + 5]) for i, func in enumerate(sigmoid_funcs)],
-            axis=1,  # stack columns
-        )
-
-        # Weighted sum across properties
-        scores = transformed_matrix @ obj_weights  # (n_valid,)
-
-        # Invert the scores, as STELLA scores are better when lower,
-        # but MolFinder wants to maximize the score.
-        scores = sum(obj_weights) - scores
-
-        result[valid_mask] = scores
-
-        return result
-
-elif args.target:  # TARGET Molecule VERSION
-    # Modify the cal_features function; Index 0, 1, and 2 are fixed.
-    # You need to put the desired features after index 3 of the returned list.
-
-    # The number of features
-    nfeatures = 2
-
-    def cal_features(_smi, _mol):  # set data_column
-        return [_smi, _mol, True, feature_qed(_mol), feature_tanimoto_similiarity(_mol)]
-
-    # Then modify obj_fn and column_name to suit your purpose.
-    target_fps = get_fp(args.target)
-    sim_coef = args.coefficient
-    qed_coef = 1 - sim_coef
-
-    def obj_fn(x):
-        return sim_coef * x[:, 4] + qed_coef * x[:, 3]
-
-    #            SMILES / feature1 / feature2 / obj_fn
-    column_name = ["SMILES", "QED", "SIM", "TARGET"]
-
-else:  # Non-TARGET Molecule VESRSION
-    # Modify the cal_features function; Index 0, 1, and 2 are fixed.
-    # You need to put the desired features after index 3 of the returned list.
-
-    # The number of features
-    nfeatures = 2
-
-    def cal_features(_smi, _mol):  # set data_column
-        return [_smi, _mol, True, feature_sascore(_mol), feature_qed(_mol)]
-
-    # Then modify obj_fn and column_name to suit your purpose.
-    qed_coef = args.coefficient
-    sas_coef = 1 - qed_coef
-
-    def obj_fn(x):
-        return qed_coef * x[:, 4] - sas_coef * x[:, 3]
-
-    #            SMILES / feature1 / feature2 / obj_fn
-    column_name = ["SMILES", "SAS", "QED", "TARGET"]
-
-# -------------------------------------------------------- #
+#            SMILES / feature1 / feature2 / obj_fn
+column_name = ["SMILES"] + FEATURE_COLUMNS + ["TARGET"]
 
 
 class ChkTime:
@@ -293,111 +126,6 @@ class ChkTime:
 
     def get(self):
         return (time.time() - self.t) / 60
-
-
-def cal_avg_dist(solutions):
-    dist_sum = 0
-    min_dist = 10
-    max_dist = 0
-    _n = len(solutions)
-
-    if _n < 2:
-        return 0
-
-    for i in range(_n - 1):
-        for j in range(i + 1, _n):
-            fps1 = get_fp(solutions[i, 1])
-            fps2 = get_fp(solutions[j, 1])
-            dist = TanimotoSimilarity(fps1, fps2)
-            dist_sum += dist
-            if dist < min_dist:
-                min_dist = dist
-            if dist > max_dist:
-                max_dist = dist
-
-    return dist_sum / (_n * (_n - 1) / 2)  # , min_dist, max_dist
-
-
-def cal_rnd_avg_dist(solutions, nrnd=400000):
-    dist_sum = 0
-    min_dist = 10
-    max_dist = 0
-    tmp_chk = 0
-
-    start_chk = time.time()
-    for _ in range(nrnd):
-        if _ == 0:
-            tmp_chk = start_chk
-
-        mol1, mol2 = np.random.choice(solutions[:, 1], size=2)
-        fps1 = get_fp(mol1)
-        fps2 = get_fp(mol2)
-        dist = TanimotoSimilarity(fps1, fps2)
-        dist_sum += dist
-
-        if dist < min_dist:
-            min_dist = dist
-        if dist > max_dist:
-            max_dist = dist
-        if _ % int(nrnd / 10) == 0:
-            print(
-                f"{_ / nrnd * 100:.1f}% complete {(time.time() - tmp_chk) / 60} min/10%\r"
-            )
-            tmp_chk = time.time()
-
-    print(f"calc. Dist total {(time.time() - start_chk) / 60} min")
-
-    return dist_sum / nrnd  # , min_dist, max_dist
-
-
-def cal_array_dist(solutions1, solutions2):
-    """
-    numpy
-    :param solutions1:
-    :param solutions2:
-    :return:
-    """
-
-    n1 = len(solutions1)
-    n2 = len(solutions2)
-    dist = np.zeros([n1, n2])
-
-    for i in range(n1):
-        for j in range(n2):
-            fps1 = get_fp(solutions1[i, 1])
-            fps2 = get_fp(solutions2[j, 1])
-            dist[n1, n2] = TanimotoSimilarity(fps1, fps2)
-
-    return dist
-
-
-def init_bank(file_name, nbank=None, nsmiles=None, rseed=None) -> np.ndarray:
-    np.random.seed(rseed)
-
-    _df = pd.read_csv(file_name)
-    df = _df[:nsmiles].values
-
-    shuffled_index = np.random.permutation(len(df))
-    tmp_bank = df[shuffled_index]
-    if isinstance(nbank, int):
-        tmp_bank = tmp_bank[:nbank]
-    df = pd.DataFrame(tmp_bank, columns=_df.columns.tolist())
-    df.to_csv(f"init_bank_{R_d:.5f}_{args.coefficient:.3f}.csv", index=False)
-
-    del df, _df
-
-    bank = np.empty([tmp_bank.shape[0], 3 + nfeatures], dtype=object)
-    bank[:, 0] = tmp_bank[:, 0]  # SMILES
-    bank[:, 2] = True  # usable label True
-
-    for i, j in enumerate(bank[:, 0]):
-        mol = Chem.MolFromSmiles(j)
-        bank[i, 1] = mol
-        Chem.Kekulize(mol)
-        bank[i, 0] = Chem.MolToSmiles(mol, kekuleSmiles=True, isomericSmiles=False)
-        bank[i, 3:] = cal_features(j, mol)[3:]
-
-    return bank
 
 
 def prepare_seed(solutions, seed):
@@ -537,44 +265,14 @@ def crossover_smiles(smi1, smi2, func, ring_bool):
 
 def append_seed(_smi, _mol, update_solution):
     try:
-        update_solution.append(cal_features(_smi, _mol))
+        update_solution.append(cal_features(_smi, _mol, lazy_compute=True))
         return 1
     except Chem.rdchem.MolSanitizeException:
         print(f"#### QED error {_smi}")
         return 0
 
 
-def prepare_child(
-    seed, nCross1=20, nCross2=20, nReplace=10, nAdd=10, nRemove=10
-) -> np.ndarray:
-    """Generate new candidate molecules by applying various
-    molecular transformations to the parent "seed" molecules
-
-    Parameters
-    ----------
-    seed : _type_
-        An array of parent molecules selected by the prepare_seed function
-    nCross1 : _type_, optional
-        Number of rigid ring-preserving crossovers to attempt per seed (default: 20)
-    nCross2 : _type_, optional
-        Number of rigid non-ring-preserving crossovers to attempt per seed (default: 20)
-    nReplace : _type_, optional
-        Number of atom replacements to attempt per seed (default: 10)
-    nAdd : _type_, optional
-        Number of atom additions to attempt per seed (default: 10)
-    nRemove : _type_, optional
-        Number of atom removals to attempt per seed (default: 10)
-
-    Returns
-    -------
-    _type_
-        _description_
-
-    Raises
-    ------
-    Exception
-        _description_
-    """
+def prepare_child(seed, nCross1=20, nCross2=20, nReplace=10, nAdd=10, nRemove=10):
     update_solution = []
     # print(seed[:, 0])
     for i in range(seed.shape[0]):
@@ -689,12 +387,12 @@ def prepare_child(
             except PermissionError:
                 q += 1
 
-    return np.asarray(update_solution)
+    return compute_feature_of_bank(np.asarray(update_solution))
 
 
 def prepare_local_child(_smi, nReplace=10, nAdd=10, nRemove=10):
     _mol = Chem.MolFromSmiles(_smi)
-    update_solution = [cal_features(_smi, _mol)]
+    update_solution = [cal_features(_smi, _mol, lazy_compute=True)]
 
     # REPLACE ###
     q = 0
@@ -742,10 +440,10 @@ def prepare_local_child(_smi, nReplace=10, nAdd=10, nRemove=10):
         except PermissionError:
             q += 1
 
-    return np.asarray(update_solution)
+    return compute_feature_of_bank(np.asarray(update_solution))
 
 
-def update_bank(child_solutions, local_opt=False, similarity_threshold=0.98):
+def update_bank(child_solutions, local_opt=False):
     cnt_replace = 0
     bank_min = np.min(obj_fn(bank))
     child_solutions = child_solutions[obj_fn(child_solutions) > bank_min]
@@ -777,7 +475,7 @@ def update_bank(child_solutions, local_opt=False, similarity_threshold=0.98):
                     cnt_replace += 1
             else:
                 _min = np.argmin(obj_fn(bank))
-                if (max_similarity < similarity_threshold) and (
+                if (max_similarity < 0.98) and (
                     obj_fn(bank[_min : _min + 1]) < final_avg.mean()
                 ):
                     if obj_fn(local_solutions[x : x + 1]) > obj_fn(
@@ -792,7 +490,7 @@ def update_bank(child_solutions, local_opt=False, similarity_threshold=0.98):
                     cnt_replace += 1
             else:
                 _min = np.argmin(obj_fn(bank))
-                if (max_similarity < similarity_threshold) and (
+                if (max_similarity < 0.98) and (
                     obj_fn(bank[_min : _min + 1]) < final_avg.mean()
                 ):
                     if obj_fn(child_solutions[i : i + 1]) > obj_fn(
@@ -822,9 +520,6 @@ if __name__ == "__main__":
         nbank,
         rseed=args.random_seed,
     )  # zinc
-
-    # TODO: compute ADMET/ligprep/ROCS/Gold on bank
-    # Append results from features.calculate.calculate
 
     chk_load = chk_load.get()
 
@@ -864,10 +559,6 @@ if __name__ == "__main__":
         log_f.write(f"max_repeat: {max_repeat}\n")
         log_f.write(f"R_d: {R_d:.6f} (convergent_round: {target_round})\n")
         log_f.write(f"D_avg: {davg:.3f} (similarity: {1 - davg:.3f})\n")
-        tmp_str = ""
-        for i, j in enumerate(column_name[1:-1]):
-            tmp_str += f"{j}: {first_bank[:, i + 3].mean():.3f}, "
-        log_f.write(f"init_bank_avg - {tmp_str[:-2]}\n")
         log_f.write(
             "round   dcut  n_iter  obj_avg  obj_min  obj_max  n_replace  min/round\n"
         )
@@ -895,10 +586,6 @@ if __name__ == "__main__":
             # log_f.write(f'## CHILD ### @ {np.count_nonzero(bank[:, 2] == True)} #############\n')
             time_child = ChkTime()
             child_solutions = prepare_child(seed)
-
-            # TODO: compute ADMET/ligprep/ROCS/Gold on child_solutions
-            # Append results from features.calculate.calculate
-
             shuffled_index_ = np.random.permutation(
                 child_solutions.shape[0]
             )  # @4 에서 추가 됨.
@@ -937,7 +624,7 @@ if __name__ == "__main__":
         bank[:, 2] = True  # reset to unused solutions
 
         plot_list.append(final_avg.mean())
-        tmp_bank = np.empty([bank.shape[0], 2 + nfeatures], dtype=object)
+        tmp_bank = np.empty([bank.shape[0], 2 + NUM_FEATURES], dtype=object)
         tmp_bank[:, 0] = bank[:, 0]
         tmp_bank[:, 1:-1] = bank[:, 3:]
         tmp_bank[:, -1] = final_avg
@@ -945,7 +632,7 @@ if __name__ == "__main__":
         tmp = np.argsort(tmp_bank[:, -1])
         save_bank[round_] = tmp_bank[tmp[::-1]]
 
-    final_bank = np.empty([bank.shape[0], 2 + nfeatures], dtype=object)
+    final_bank = np.empty([bank.shape[0], 2 + NUM_FEATURES], dtype=object)
     final_bank[:, 0] = bank[:, 0]
     final_bank[:, 1:-1] = bank[:, 3:]
     final_bank[:, -1] = final_avg

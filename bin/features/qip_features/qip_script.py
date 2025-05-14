@@ -9,9 +9,11 @@ from qip.datamodules.featurizers import QIPFeaturizer
 from qip.datamodules.transforms import RandomWalkGenerator
 from rdkit import Chem
 from torch.utils.data import DataLoader
+from loguru import logger
+import warnings
 
-if torch.cuda.is_available():
-    print("CUDA is available")
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -52,9 +54,9 @@ def main(smiles_list):
     batch = collate_fn(data_list)
 
     # Load model
-    ckpt = torch.load("/db2/users/hokyun/multitask_weight_HAD.ckpt")
+    ckpt = torch.load("/db3/users/hokyun/multitask_weight_HAD.ckpt")
     encoder_config = OmegaConf.load(
-        "/db2/users/hokyun/git/QIP/configs/system/encoder_config/gps/medium.yaml"
+        "/db2/users/wonseokshin/sandbox/MolFinder/configs/qip/encoder_config.yaml"
     )
     encoder = hydra.utils.instantiate(encoder_config)["module"]
     encoder_dict = {}
@@ -66,12 +68,11 @@ def main(smiles_list):
     encoder.eval()
     encoder.to(device)
 
-    multitask_config_path = (
-        "/db2/users/hokyun/git/QIP/configs/system/task_head_configs/gps/MT0.yaml"
+    task_head_path = (
+        "/db2/users/wonseokshin/sandbox/MolFinder/configs/qip/task_head_configs"
     )
-    task_head_path = "/".join(multitask_config_path.split("/")[:-2])
     task_head_configs = OmegaConf.load(
-        "/db2/users/hokyun/git/QIP/configs/system/task_head_configs/gps/MT0.yaml"
+        "/db2/users/wonseokshin/sandbox/MolFinder/configs/qip/MT0.yaml"
     )
 
     task_heads = {}
@@ -84,7 +85,6 @@ def main(smiles_list):
         task_head_config[task_name]["module"]["in_features"] = encoder_config["module"][
             "d_model"
         ]
-
         task_head_instance = hydra.utils.instantiate(task_head_config)[task_name]
 
         task_head = task_head_instance["module"]
