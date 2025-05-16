@@ -3,7 +3,10 @@ from typing import Dict, List
 
 from rdkit import Chem
 
-from ...utils.utils import flatten
+
+def flatten(nested_list):
+    flat_list = [item for sublist in nested_list for item in sublist]
+    return flat_list
 
 
 class ScaffoldMatcher:

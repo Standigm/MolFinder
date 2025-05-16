@@ -5,7 +5,10 @@ from typing import Dict, Optional
 
 from rdkit import Chem
 
-from ...utils.utils import get_default_output_path
+
+def get_default_output_path(input_path: str, job_name: str) -> str:
+    in_path = Path(input_path).resolve()
+    return Path(in_path.parent / f"{job_name}_output-{in_path.stem}.sdf").as_posix()
 
 
 class ConformerGenerator(ABC):

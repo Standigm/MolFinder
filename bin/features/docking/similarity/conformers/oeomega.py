@@ -8,8 +8,10 @@ from typing import Dict, Literal, Optional, Union
 import pandas as pd
 from openeye import oechem
 
-from ...utils.utils import set_oe_env
-from .conformer_generator import ConformerGeneratorCLI
+from ligprep.oe_utils.env_setup import set_oe_env
+from features.docking.similarity.conformers.conformer_generator import (
+    ConformerGeneratorCLI,
+)
 
 # from stella_tasks.utils.utils import check_file_suffix, get_logger
 

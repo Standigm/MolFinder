@@ -4,9 +4,11 @@ from typing import List, Union
 
 import pandas as pd
 import submitit
-
-from ...scoring.components import docking_components
-from ..utils.sdf_handler import concat_sdf, filter_sdf, get_best_scores_from_sdf
+from bin.features.docking.similarity.sdf_handler import (
+    concat_sdf,
+    filter_sdf,
+    get_best_scores_from_sdf,
+)
 from .run_lrg import run_gold, run_ligprep, run_rocs
 
 
@@ -67,7 +69,7 @@ def run_lrg_pipeline(target: str, shard_path, iter_dir: str):
     # Keep top N results
     filtered_rocs_output_path = filter_sdf(
         rocs_output_path,
-        rank_by=docking_components["rocs"]["prop"],
+        rank_by="ROCS_Tanimoto",
         keep_lowest_values=False,
         n_per_inchikey=1,
     )
@@ -83,7 +85,7 @@ def run_lrg_pipeline(target: str, shard_path, iter_dir: str):
     # Keep top N results
     filtered_gold_output_path = filter_sdf(
         output_path,
-        rank_by=docking_components["gold"]["prop"],
+        rank_by="Gold.PLP.Fitness",
         keep_lowest_values=False,
         n_per_inchikey=1,
     )
@@ -132,12 +134,12 @@ def run_iteration(
     # Just get the inchikeys and the best scores
     best_rocs = get_best_scores_from_sdf(
         rocs_final_path,
-        select_by=docking_components["rocs"]["prop"],
+        select_by="ROCS_Tanimoto",
         keep_lowest_scores=False,
     )
     best_gold = get_best_scores_from_sdf(
         gold_final_path,
-        select_by=docking_components["gold"]["prop"],
+        select_by="Gold.PLP.Fitness",
         keep_lowest_scores=False,
     )
 

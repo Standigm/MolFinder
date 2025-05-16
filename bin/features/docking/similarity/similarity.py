@@ -3,10 +3,17 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Dict, Optional  # Add imports from typing
 
-from ...utils import sdf_handler
-from ...utils.utils import get_default_output_path
-from ..conformers.conformer_generator import ConformerGenerator
-from ..conformers.oeomega import OEOmegaCLI
+import features.docking.similarity.sdf_handler as sdf_handler
+from features.docking.similarity.conformers.conformer_generator import (
+    ConformerGenerator,
+)
+from features.docking.similarity.conformers.oeomega import OEOmegaCLI
+
+
+def get_default_output_path(input_path: str, job_name: str) -> str:
+    in_path = Path(input_path).resolve()
+    return Path(in_path.parent / f"{job_name}_output-{in_path.stem}.sdf").as_posix()
+
 
 STR_TO_CONF = {
     "omega": OEOmegaCLI,

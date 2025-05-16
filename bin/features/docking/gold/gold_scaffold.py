@@ -3,8 +3,8 @@ import random
 
 from rdkit import Chem
 
-from .scaffold import ScaffoldMatcher
-from .smarts_generator import SmartsGenerator
+from features.docking.gold.scaffold import ScaffoldMatcher
+from features.docking.gold.smarts_generator import SmartsGenerator
 
 
 def get_scaffold_indice(smiles, scaffold_smiles):

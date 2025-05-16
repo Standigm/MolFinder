@@ -8,15 +8,17 @@ import numpy as np
 from openeye import oechem
 from rdkit import Chem
 
-from .gold_config import write_config
-from .gold_scaffold import get_gold_scaffold
-from .mcs import MCS
+from features.docking.gold.gold_config import write_config
+from features.docking.gold.gold_scaffold import get_gold_scaffold
+from features.docking.gold.mcs import MCS
+import submitit
 
 
 def set_gold_license():
     os.environ["CCDC_LICENSING_CONFIGURATION"] = (
         "lf-server;http://192.168.2.200:9876;num-retries=10"
     )
+    print("set license for Gold")
 
 
 def oe_struct_converter(input_path, output_path):
@@ -27,6 +29,7 @@ def oe_struct_converter(input_path, output_path):
 
 
 class GoldDock:
+    # GOLD_EXE = "/db2/CSD_2025/ccdc-software/gold/GOLD/bin/gold_auto"
     GOLD_EXE = "/db2/CCDC/ccdc-software/gold/GOLD/bin/gold_auto"
     set_gold_license()
 
@@ -192,10 +195,36 @@ class GoldDock:
         z = c[2]
         return f"{x},{y},{z}"
 
-    def run_gold(self):
-        return subprocess.run([self.GOLD_EXE, self.config_path])
+    def run_gold(self, where=0):
+        subprocess.run(
+            [self.GOLD_EXE, self.config_path],
+            capture_output=True,
+        )
+        # session = f"GOLD_{where}"  # name or ID of your tmux session
+        # pane = "0"  # window/pane target (e.g. “0”, or “1.2”)
+        # signal = "GOLD_JOB_DONE"
+        # # send the job into the pane
+        # subprocess.run(
+        #     [
+        #         "tmux",
+        #         "send-keys",
+        #         "-t",
+        #         f"{session}:{pane}",
+        #         f"/db2/CCDC/ccdc-software/gold/GOLD/bin/gold_auto {self.config_path} ; tmux wait-for -S {signal}",
+        #         "C-m",
+        #     ],
+        #     check=True,
+        # )
 
-    def run(self):
+        # subprocess.run(["tmux", "wait-for", signal], check=True)
+
+    # def run_gold(self):
+    #     cmd = f"/db2/users/isjoung/anaconda3/envs/py310/bin/python /db2/users/isjoung/chemtools/sbin/gold_dock.py --ref {self.reference_ligand_path} -o ./gold_example {self.pdb_path} {self.ligand_path} --autoscale 0.5 --div --div_rmsd 1.5 --div_cluster 3 -n 25"
+    #     print(cmd)
+    #     exit(0)
+    #     os.system(cmd)
+
+    def run(self, where=0):
         try:
             if not self.temp_on_disk:
                 with tempfile.TemporaryDirectory() as temp_dir:
@@ -204,7 +233,7 @@ class GoldDock:
                     else:
                         self._write_config(temp_dir)
                     os.sync()
-                    self.run_gold()
+                    self.run_gold(where)
                     os.sync()
                 return self.output_path
             else:
@@ -217,7 +246,7 @@ class GoldDock:
                 else:
                     self._write_config(str(temp_dir_path))
                 os.sync()
-                self.run_gold()
+                self.run_gold(where)
                 os.sync()
                 return self.output_path
         except Exception as e:

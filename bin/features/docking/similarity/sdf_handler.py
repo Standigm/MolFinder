@@ -8,7 +8,19 @@ import pandas as pd
 from openeye import oechem
 from rdkit import Chem
 
-from .utils import add_prefix_to_filename
+
+def add_prefix_to_filename(filepath, prefix):
+    # Split the filepath into the directory and the filename
+    directory, filename = os.path.split(filepath)
+
+    # Add the prefix to the filename
+    new_filename = f"{prefix}_{filename}"
+
+    # Join the directory and the new filename to create the new filepath
+    new_filepath = os.path.join(directory, new_filename)
+
+    return new_filepath
+
 
 # from stella_tasks.openeye_script.sdf2csv import SDF2CSV
 
@@ -69,6 +81,9 @@ def sdf_to_df(sdf_path: Union[Path, str]):
         data.append(row)
 
     df = pd.DataFrame(data)
+    if "inchikey" not in df.columns:
+        # Generate InChIKey if not present
+        df["inchikey"] = df["Title"].apply(lambda x: x.split("_")[0])
     return df
 
 

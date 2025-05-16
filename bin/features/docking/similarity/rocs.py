@@ -3,8 +3,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Literal, Optional, Union
 
-from ...utils.utils import set_oe_env
-from .similarity import SimilarityScorerCLI
+from ligprep.oe_utils.env_setup import set_oe_env
+from features.docking.similarity.similarity import SimilarityScorerCLI
 
 # from stella_tasks.utils.utils import check_file_suffix, get_logger
 
