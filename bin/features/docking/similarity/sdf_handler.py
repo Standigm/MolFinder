@@ -83,7 +83,11 @@ def sdf_to_df(sdf_path: Union[Path, str]):
     df = pd.DataFrame(data)
     if "inchikey" not in df.columns:
         # Generate InChIKey if not present
-        df["inchikey"] = df["Title"].apply(lambda x: x.split("_")[0])
+        try:
+            df["inchikey"] = df["Title"].apply(lambda x: x.split("_")[0])
+        except Exception as e:
+            print(f"Error generating InChIKey: {e}")
+            df["inchikey"] = [None] * len(df)
     return df
 
 

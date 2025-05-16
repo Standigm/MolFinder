@@ -138,6 +138,6 @@ protein_datafile = {pdb_path}"""
         os.sync()
     with open(config_path, "w") as f:
         f.write(configs)
-        print(f"Configuration file written: {config_path}")
+        # print(f"Configuration file written: {config_path}")
     os.sync()
     return config_path

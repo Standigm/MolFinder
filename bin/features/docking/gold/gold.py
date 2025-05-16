@@ -18,7 +18,6 @@ def set_gold_license():
     os.environ["CCDC_LICENSING_CONFIGURATION"] = (
         "lf-server;http://192.168.2.200:9876;num-retries=10"
     )
-    print("set license for Gold")
 
 
 def oe_struct_converter(input_path, output_path):
@@ -198,31 +197,9 @@ class GoldDock:
     def run_gold(self, where=0):
         subprocess.run(
             [self.GOLD_EXE, self.config_path],
-            capture_output=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
-        # session = f"GOLD_{where}"  # name or ID of your tmux session
-        # pane = "0"  # window/pane target (e.g. “0”, or “1.2”)
-        # signal = "GOLD_JOB_DONE"
-        # # send the job into the pane
-        # subprocess.run(
-        #     [
-        #         "tmux",
-        #         "send-keys",
-        #         "-t",
-        #         f"{session}:{pane}",
-        #         f"/db2/CCDC/ccdc-software/gold/GOLD/bin/gold_auto {self.config_path} ; tmux wait-for -S {signal}",
-        #         "C-m",
-        #     ],
-        #     check=True,
-        # )
-
-        # subprocess.run(["tmux", "wait-for", signal], check=True)
-
-    # def run_gold(self):
-    #     cmd = f"/db2/users/isjoung/anaconda3/envs/py310/bin/python /db2/users/isjoung/chemtools/sbin/gold_dock.py --ref {self.reference_ligand_path} -o ./gold_example {self.pdb_path} {self.ligand_path} --autoscale 0.5 --div --div_rmsd 1.5 --div_cluster 3 -n 25"
-    #     print(cmd)
-    #     exit(0)
-    #     os.system(cmd)
 
     def run(self, where=0):
         try:

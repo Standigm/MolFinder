@@ -1,7 +1,13 @@
+import datamol
 from ligprep.oe_ligprep.oe_ligprep import LigPrep
 
-from .gold.gold import GoldDock
-from .similarity.rocs import Rocs
+from features.docking.gold.gold import GoldDock
+from features.docking.similarity.rocs import Rocs
+from features.docking.similarity.sdf_handler import (
+    concat_sdf,
+    filter_sdf,
+    get_best_scores_from_sdf,
+)
 
 ligprep_configs = {
     "abl": {
@@ -81,7 +87,9 @@ def run_rocs(input_path: str, output_path: str, target: str):
     )
 
 
-def run_gold(input_path: str, output_path: str, target: str, config_path: str):
+def run_gold(
+    input_path: str, output_path: str, target: str, config_path: str, where: int = 0
+):
     gold_config = gold_configs[target]
     gold_dock = GoldDock(
         reference_ligand_path=gold_config["reference_ligand_path"],
@@ -95,4 +103,74 @@ def run_gold(input_path: str, output_path: str, target: str, config_path: str):
         fitness_function=gold_config["fitness_function"],
         rescore_mode=gold_config["rescore_mode"],
     )
-    gold_dock.run()
+    gold_dock.run(where)
+
+
+import pandas as pd
+from loguru import logger
+
+if __name__ == "__main__":
+    # df = pd.read_csv("/db2/users/wonseokshin/sandbox/MolFinder/bin/init_bank.csv")
+    # df["inchikey"] = [datamol.to_inchikey(mol) for mol in df["SMILES"]]
+    # df.to_csv("/db2/users/wonseokshin/sandbox/MolFinder/bin/init_bank.csv", index=False)
+    logger.info("Starting LRG Pipeline!")
+    ligprep_output_path = "./ligprep_example.sdf"
+    run_ligprep(
+        input_path="/db2/users/wonseokshin/sandbox/MolFinder/bin/features/docking/lrg_sample.csv",
+        output_path=ligprep_output_path,
+        target="abl",
+    )
+    logger.info("Ligprep done")
+    filtered_ligprep_output_path = filter_sdf(
+        "./ligprep_example.sdf",
+        rank_by="energy",
+        keep_lowest_values=True,
+        n_per_inchikey=5,
+    )
+    logger.info("Ligprep Filtering done")
+
+    rocs_output_path = "./rocs_example.sdf"
+    run_rocs(
+        input_path=filtered_ligprep_output_path,
+        output_path=rocs_output_path,
+        target="abl",
+    )
+    logger.info("ROCS done")
+
+    # # Run GoldDock
+    # # Keep top N results
+    filtered_rocs_output_path = filter_sdf(
+        rocs_output_path,
+        rank_by="ROCS_TanimotoCombo",
+        keep_lowest_values=False,
+        n_per_inchikey=1,
+    )
+    logger.info("ROCS Filtering done")
+    logger.info("Running GoldDock")
+
+    gold_output_path = "./gold_example.sdf"
+    run_gold(
+        input_path=filtered_rocs_output_path,
+        output_path="./gold_example.sdf",
+        target="abl",
+        config_path="./gold_conf.conf",
+        where=0,
+    )
+    logger.info("GoldDock Done")
+
+    filtered_gold_output_path = filter_sdf(
+        gold_output_path,
+        rank_by="Gold.PLP.Fitness",
+        keep_lowest_values=False,
+        n_per_inchikey=1,
+    )
+
+    logger.info("Scoring:")
+    print(
+        get_best_scores_from_sdf(
+            input_sdf_path=filtered_gold_output_path,
+            select_by="Gold.PLP.Fitness",
+            keep_lowest_scores=False,
+        )
+    )
+    print()

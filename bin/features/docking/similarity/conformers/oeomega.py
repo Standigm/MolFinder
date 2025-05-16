@@ -240,8 +240,8 @@ class OEOmegaCLI(ConformerGeneratorCLI):
             subprocess.run(
                 command,
                 cwd=cwd,
-                text=True,
-                capture_output=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 check=True,
             )
         except subprocess.CalledProcessError as e:
