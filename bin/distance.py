@@ -3,19 +3,31 @@ from rdkit import Chem
 import time
 import numpy as np
 
+FINGERPRINT_CACHE = dict()
+
+# Thorugh this caching, we reduce a lot of computation time (this was not in MolFinder)
+
 
 def _get_fp(x):
     return Chem.RDKFingerprint(x)
 
 
 def get_fp(mol_or_smi):
+    if mol_or_smi in FINGERPRINT_CACHE:
+        return FINGERPRINT_CACHE[mol_or_smi]
     if isinstance(mol_or_smi, (Chem.rdchem.Mol, Chem.rdchem.RWMol)):
         _mol = mol_or_smi
     elif isinstance(mol_or_smi, str):
         _mol = Chem.MolFromSmiles(mol_or_smi)
     else:
         raise ValueError("This type is not allowed.")
-    return _get_fp(_mol)
+    inchi = Chem.MolToInchi(_mol)
+    if inchi in FINGERPRINT_CACHE:
+        return FINGERPRINT_CACHE[inchi]
+    fp = _get_fp(_mol)
+    FINGERPRINT_CACHE[mol_or_smi] = fp
+    FINGERPRINT_CACHE[inchi] = fp
+    return FINGERPRINT_CACHE[mol_or_smi]
 
 
 def cal_avg_dist(solutions):
