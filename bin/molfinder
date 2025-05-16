@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 
 import argparse
+import copy
 from dataclasses import dataclass
 import os
 import sys
 import time
 
+import datamol
+from loguru import logger
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -14,17 +17,20 @@ from rdkit.Chem import RDConfig
 from rdkit.DataStructs import TanimotoSimilarity
 from molfinder_bank import init_bank
 from features.calculate import (
+    DockingFeatureCalculator,
     cal_features,
     NUM_FEATURES,
     FEATURE_COLUMNS,
     compute_feature_of_bank,
     obj_fn,
+    stella_obj_fn,
 )
 from distance import cal_avg_dist, cal_rnd_avg_dist, get_fp
 
 sys.path.append(os.path.join(RDConfig.RDContribDir, "SA_Score"))
 
 import ModSMI
+
 
 parser = argparse.ArgumentParser(
     description="This python script is made by Yongbeom Kwon"
@@ -44,7 +50,7 @@ parser.add_argument(
     "--seed-size",
     metavar="N",
     type=int,
-    default=60,
+    default=50,  # originally 60
     help="",
 )
 parser.add_argument(
@@ -129,7 +135,11 @@ class ChkTime:
 
 
 def prepare_seed(solutions, seed):
-    solutions = solutions[np.where(solutions[:, 2] is True)]  # 사용 가능한 것이 True
+    # TODO: Check if this is actually equal with
+    # solutions = solutions[np.where(solutions[:, 2] is True)]
+    # which newer numpy versions complain about deprecation.
+    mask = solutions[:, 2].astype(bool)
+    solutions = solutions[mask]
     x = np.argsort(obj_fn(solutions))
     solutions = x[::-1]
 
@@ -272,7 +282,8 @@ def append_seed(_smi, _mol, update_solution):
         return 0
 
 
-def prepare_child(seed, nCross1=20, nCross2=20, nReplace=10, nAdd=10, nRemove=10):
+# def prepare_child(seed, nCross1=20, nCross2=20, nReplace=10, nAdd=10, nRemove=10):
+def prepare_child(seed, nCross1=10, nCross2=10, nReplace=10, nAdd=10, nRemove=10):
     update_solution = []
     # print(seed[:, 0])
     for i in range(seed.shape[0]):
@@ -387,7 +398,7 @@ def prepare_child(seed, nCross1=20, nCross2=20, nReplace=10, nAdd=10, nRemove=10
             except PermissionError:
                 q += 1
 
-    return compute_feature_of_bank(np.asarray(update_solution))
+    return np.asarray(update_solution)
 
 
 def prepare_local_child(_smi, nReplace=10, nAdd=10, nRemove=10):
@@ -447,6 +458,7 @@ def update_bank(child_solutions, local_opt=False):
     cnt_replace = 0
     bank_min = np.min(obj_fn(bank))
     child_solutions = child_solutions[obj_fn(child_solutions) > bank_min]
+    logger.debug(f"Update Bank with {len(child_solutions)} child solutions...")
 
     if len(child_solutions) == 0:
         raise PermissionError("child solutions 가 없습니다 !")
@@ -502,6 +514,21 @@ def update_bank(child_solutions, local_opt=False):
     return cnt_replace, len(child_solutions)
 
 
+def filter_child_solutions(child_solutions):
+    filtered_solutions = []
+    for child in child_solutions:
+        smi = child[0]
+        mol = Chem.MolFromSmiles(smi)
+        molwt = datamol.descriptors.mw(mol)
+        if molwt > 600:
+            continue
+        filtered_solutions.append(child)
+    logger.info(
+        f"Filter child solutions that are too large (mw >= 600): Reduced {len(child_solutions)} -> {len(filtered_solutions)}"
+    )
+    return np.array(filtered_solutions)
+
+
 if __name__ == "__main__":
     target_value = 3
     target_round = args.convergent_round
@@ -520,6 +547,7 @@ if __name__ == "__main__":
         nbank,
         rseed=args.random_seed,
     )  # zinc
+    logger.info(f"Bank size: {len(bank)}. Start MolFinder!")
 
     chk_load = chk_load.get()
 
@@ -590,6 +618,10 @@ if __name__ == "__main__":
                 child_solutions.shape[0]
             )  # @4 에서 추가 됨.
             child_solutions = child_solutions[shuffled_index_]
+
+            child_solutions = filter_child_solutions(child_solutions)
+            child_solutions = compute_feature_of_bank(child_solutions)
+            # Remove child solutions that does not meet filter
             time_child = time_child.get()
             # log_f.write(f'## CHILD ### @ {np.count_nonzero(bank[:, 2] == True)} #### AFTER ##\n')
 
@@ -622,7 +654,7 @@ if __name__ == "__main__":
             )
 
         bank[:, 2] = True  # reset to unused solutions
-
+        stella_obj = stella_obj_fn(bank)
         plot_list.append(final_avg.mean())
         tmp_bank = np.empty([bank.shape[0], 2 + NUM_FEATURES], dtype=object)
         tmp_bank[:, 0] = bank[:, 0]
@@ -631,6 +663,16 @@ if __name__ == "__main__":
         tmp_bank[:, 1:] = tmp_bank[:, 1:].astype(np.float16)
         tmp = np.argsort(tmp_bank[:, -1])
         save_bank[round_] = tmp_bank[tmp[::-1]]
+        interm_bank = np.empty([bank.shape[0], 3 + NUM_FEATURES], dtype=object)
+        interm_bank[:, 0] = bank[:, 0]
+        interm_bank[:, 1:-2] = bank[:, 3:]
+        interm_bank[:, -2] = final_avg
+        interm_bank[:, -1] = stella_obj
+        logger.warning(
+            f"Iteration {round_}: AVG. Obj. Score = {final_avg.mean():.3f} STELLA obj = {stella_obj.mean():.3f}"
+        )
+        df = pd.DataFrame(interm_bank, columns=column_name + ["stella_obj"])
+        df.to_csv(f"banks/bank_iteration_{round_}.csv", index=False)
 
     final_bank = np.empty([bank.shape[0], 2 + NUM_FEATURES], dtype=object)
     final_bank[:, 0] = bank[:, 0]
