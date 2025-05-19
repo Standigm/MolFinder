@@ -1,0 +1,6 @@
+[submodule "external/ligprep"]
+	path = external/ligprep
+	url = https://github.com/Standigm/ligprep
+[submodule "external/QIP"]
+	path = external/QIP
+	url = https://github.com/Standigm/QIP

@@ -1,0 +1,13 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index c8a023a..28b15bf 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -9,7 +9,7 @@ description = "Short description"
+ readme = "README.md"
+ authors = [{ name = "Someone", email = "someone@some.where" }]
+ keywords = ["python"]
+-requires-python = ">=3.10"
++# requires-python = ">=3.10"
+ # dependencies = ["Package_name>=version", "Another_package==version"]
+ dynamic = ["dependencies", "optional-dependencies"]
+ 
