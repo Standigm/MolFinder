@@ -20,7 +20,14 @@ from std_chem.parallel.backends import JoblibJobRunner, SlurmJobRunner
 import os
 from contextlib import redirect_stdout, redirect_stderr
 
-N_JOBS = 600
+N_JOBS = 2500
+TARGET = "abl"
+SCAFFOLD_SMILES = (
+    "*c1ccccc1C(=O)NC" if TARGET == "abl" else "*c1cc(*)c(*)c(CN2CCC(*)CC2)c1"
+)
+logger.error(f"TARGET = {TARGET}, SCAFFOLD_SMILES = {SCAFFOLD_SMILES}")
+# SCAFFOLD_SMILES = "c1ccccc1C=CC(Cl)=C"
+SCAFFOLD_PATTERN = Chem.MolFromSmarts(SCAFFOLD_SMILES)
 
 
 def _chunkify(data, n_chunks):
@@ -142,11 +149,7 @@ class QIPFeatureCalculator(FeatureCalculator):
 class RDKitFeatureCalculator(FeatureCalculator):
     def __init__(self):
         super().__init__()
-        self.feature_columns = [
-            "SAS",
-            "QED",
-            "ALogP",
-        ]
+        self.feature_columns = ["SAS", "QED", "ALogP", "Scaffold"]
 
     def __call__(self, smi):
         D = super().__call__(smi)
@@ -164,6 +167,7 @@ class RDKitFeatureCalculator(FeatureCalculator):
                 "SAS": feature_sascore(mol),
                 "QED": feature_qed(mol),
                 "ALogP": feature_alogp(mol),
+                "Scaffold": float(mol.HasSubstructMatch(SCAFFOLD_PATTERN)),
             }
             self.cache[inchikey] = self.cache[smiles]
         logger.info(
@@ -192,14 +196,16 @@ class DockingFeatureCalculator(FeatureCalculator):
         )
         df.to_csv(file_path, index=False)
 
-    def lrg_score_eval(self, smiles_list):
+    def lrg_score_eval(self, smiles):
         try:
+            smiles_list = [smiles]
             with NamedTemporaryFile(suffix=".csv", delete=False) as ligand_input_file:
                 ligand_input_path = ligand_input_file.name
                 input_path_stem = ligand_input_path.split(".")[0]
                 self.save_ligand_list(smiles_list, ligand_input_path)
                 ligprep_out_path = input_path_stem + "_ligprep_out.sdf"
-                run_ligprep(ligand_input_path, ligprep_out_path, target="abl")
+                logger.info(f"Running LigPrep: {smiles_list} -> {ligprep_out_path}")
+                run_ligprep(ligand_input_path, ligprep_out_path, target=TARGET)
 
                 filtered_ligand_out_path = filter_sdf(
                     ligprep_out_path,
@@ -209,10 +215,13 @@ class DockingFeatureCalculator(FeatureCalculator):
                 )
 
                 rocs_out_path = input_path_stem + "_rocs_out.sdf"
+                logger.info(
+                    f"Running ROCS: {filtered_ligand_out_path} -> {rocs_out_path}"
+                )
                 run_rocs(
                     input_path=filtered_ligand_out_path,
                     output_path=rocs_out_path,
-                    target="abl",
+                    target=TARGET,
                 )
 
                 filtered_rocs_out_path = filter_sdf(
@@ -222,14 +231,18 @@ class DockingFeatureCalculator(FeatureCalculator):
                     n_per_inchikey=1,
                 )
                 gold_out_path = input_path_stem + "_gold_out.sdf"
+                logger.info(
+                    f"Running GOLD: {filtered_rocs_out_path} -> {gold_out_path}"
+                )
                 gold_config_path = input_path_stem + "_gold_conf.conf"
                 run_gold(
                     input_path=filtered_rocs_out_path,
                     output_path=gold_out_path,
-                    target="abl",
+                    target=TARGET,
                     config_path=gold_config_path,
                     where=0,
                 )
+                logger.info("Finished Running GOLD: Searching best scores")
                 filtered_gold_out_path = filter_sdf(
                     gold_out_path,
                     rank_by="Gold.PLP.Fitness",
@@ -251,48 +264,50 @@ class DockingFeatureCalculator(FeatureCalculator):
             return None
 
     def evaluate(self, smiles_list):
-        sublists = _chunkify(smiles_list, N_JOBS)
-        logger.info(
-            f"Running GOLD for {len(smiles_list)} ligands splitted into {len(sublists)} chunks."
-        )
+        logger.info(f"Running GOLD for {len(smiles_list)} ligands")
         # splitted_smiles_list = np.array_split(smiles_list, N_JOBS)
         # runner = JoblibJobRunner(
         #     n_jobs=N_JOBS, batch_size=1, show_progress=True, backend="multiprocessing"
         # )
         runner = SlurmJobRunner(
-            n_jobs=N_JOBS,
+            n_jobs=min(N_JOBS, len(smiles_list)),
             batch_size=1,
             show_progress=True,
-            slurm_partition="cpu96,cpu256",
-            slurm_timeout_min=1440,
+            slurm_partition="cpu256,cpu96",
+            slurm_timeout_min=90,
             cpus_per_task=1,
-            slurm_job_name="MolFinder-GOLD",
+            slurm_job_name=f"{TARGET}-MolFinder-GOLD",
+            log_folder="/db2/users/wonseokshin/sandbox/tmp_dir_slurm",
         )
         chunked_results = runner.run(
             self.lrg_score_eval,
-            data=sublists,
+            data=smiles_list,
         )
         for chunked_result in chunked_results:
-            if chunked_result is None:
+            try:
+                if chunked_result is None:
+                    continue
+                rocs_score_df, gold_score_df = chunked_result
+                joint_df = rocs_score_df.join(
+                    gold_score_df.set_index("inchikey"), on="inchikey", how="inner"
+                )
+                joint_df.rename(
+                    {
+                        "ROCS_TanimotoCombo": "rocs",
+                        "Gold.PLP.Fitness": "gold",
+                        "inchikey": "inchikey",
+                    },
+                    axis=1,
+                    inplace=True,
+                )
+                for row in joint_df.to_dict(orient="records"):
+                    try:
+                        self.cache[row["inchikey"]] = row
+                    except Exception as e:
+                        pass
+            except Exception as e:
+                logger.error(f"Error in evaluate: {e}")
                 continue
-            rocs_score_df, gold_score_df = chunked_result
-            joint_df = rocs_score_df.join(
-                gold_score_df.set_index("inchikey"), on="inchikey", how="inner"
-            )
-            joint_df.rename(
-                {
-                    "ROCS_TanimotoCombo": "rocs",
-                    "Gold.PLP.Fitness": "gold",
-                    "inchikey": "inchikey",
-                },
-                axis=1,
-                inplace=True,
-            )
-            for row in joint_df.to_dict(orient="records"):
-                try:
-                    self.cache[row["inchikey"]] = row
-                except Exception as e:
-                    pass
 
 
 FEATURE_CALCULATORS = [
@@ -304,6 +319,7 @@ FEATURE_COLUMNS = sum(
     [calculator.feature_columns for calculator in FEATURE_CALCULATORS], []
 )
 FEATURE_IDX = {name: idx + 3 for idx, name in enumerate(FEATURE_COLUMNS)}
+logger.debug(f"FEATURE_COLUMNS = {FEATURE_COLUMNS}")
 NUM_FEATURES = len(FEATURE_COLUMNS)
 logger.info(f"NUM_FEATURES = {NUM_FEATURES}")
 
@@ -340,6 +356,9 @@ def compute_feature_of_bank(bank):
 def obj_fn(x):
     score = np.zeros(x.shape[0])
     for feature, idx in FEATURE_IDX.items():
+        if feature == "Scaffold":
+            score += (np.array(x[:, idx], np.float64) - 1) * 20
+            continue
         s_i = np.asarray([sigmoid_funcs[feature](val) for val in x[:, idx]])
         w_i = obj_weights[feature]
         score += -s_i * w_i
@@ -350,6 +369,8 @@ def obj_fn(x):
 def stella_obj_fn(x):
     score = np.zeros(x.shape[0])
     for feature, idx in FEATURE_IDX.items():
+        if feature == "Scaffold":
+            continue
         s_i = np.asarray([sigmoid_funcs[feature](val) for val in x[:, idx]])
         w_i = obj_weights[feature]
         score += s_i * w_i

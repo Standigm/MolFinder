@@ -5,8 +5,7 @@ from features.calculate import (
     cal_features,
     NUM_FEATURES,
     compute_feature_of_bank,
-    evaluate_qip,
-    QIP_FEATURE_CACHE,
+    TARGET,
 )
 from loguru import logger
 
@@ -20,7 +19,7 @@ def init_bank(file_name, nbank=None, nsmiles=None, rseed=None):
     shuffled_index = np.random.permutation(len(df))
     tmp_bank = df[shuffled_index][:nbank]
     df = pd.DataFrame(tmp_bank, columns=_df.columns.tolist())
-    df.to_csv("init_bank.csv", index=False)
+    df.to_csv(f"{TARGET}_init_bank.csv", index=False)
 
     del df, _df
 

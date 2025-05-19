@@ -4,6 +4,7 @@ import argparse
 import copy
 from dataclasses import dataclass
 import os
+import pickle
 import sys
 import time
 
@@ -17,9 +18,11 @@ from rdkit.Chem import RDConfig
 from rdkit.DataStructs import TanimotoSimilarity
 from molfinder_bank import init_bank
 from features.calculate import (
+    FEATURE_CALCULATORS,
     DockingFeatureCalculator,
     cal_features,
     NUM_FEATURES,
+    TARGET,
     FEATURE_COLUMNS,
     compute_feature_of_bank,
     obj_fn,
@@ -31,6 +34,7 @@ sys.path.append(os.path.join(RDConfig.RDContribDir, "SA_Score"))
 
 import ModSMI
 
+logger.error(f"TARGET {TARGET}")
 
 parser = argparse.ArgumentParser(
     description="This python script is made by Yongbeom Kwon"
@@ -557,7 +561,7 @@ if __name__ == "__main__":
 
     plot_list = []
 
-    fail_f = open("fail_smiles.txt", "w")
+    fail_f = open(f"{TARGET}_fail_smiles.txt", "w")
 
     chk_calc = ChkTime()
 
@@ -574,14 +578,14 @@ if __name__ == "__main__":
 
     chk_calc = chk_calc.get()
 
-    with open("iteration.log", "w") as log_f2:
+    with open(f"{TARGET}_iteration.log", "w") as log_f2:
         log_f2.write(f"load_time: {chk_load:.3f} min\n")
         log_f2.write(f"dist_time: {chk_calc:.1f} min\n")
         log_f2.write(
             "round  iter  unused  time_seed  time_child  time_update  n_replace  n_eval\n"
         )
 
-    with open("message.log", "w") as log_f:
+    with open(f"{TARGET}_message.log", "w") as log_f:
         log_f.write(f"nbank: {nbank}\n")
         log_f.write(f"nseed: {nseed}\n")
         log_f.write(f"max_repeat: {max_repeat}\n")
@@ -639,7 +643,7 @@ if __name__ == "__main__":
 
             if np.count_nonzero(bank[:, 2] is True) < (nbank - nseed * 0.9):
                 iter_gate = False
-            with open("iteration.log", "a") as log_f2:
+            with open(f"{TARGET}_iteration.log", "a") as log_f2:
                 log_f2.write(
                     f"{round_:>4}  {niter:4}  {np.count_nonzero(bank[:, 2] is True):>6}     {time_seed:6.1f}"
                     f"      {time_child:6.1f}       {time_update:6.1f}    {n_replace:7}     {n_eval}\n"
@@ -647,7 +651,7 @@ if __name__ == "__main__":
 
         final_avg = obj_fn(bank)
 
-        with open("message.log", "a") as log_f:
+        with open(f"{TARGET}_message.log", "a") as log_f:
             log_f.write(
                 f"{round_:>4}   {dcut:4.3f}    {niter:3}   {final_avg.mean():6.3f}   {final_avg.min():6.3f}   "
                 f"{final_avg.max():6.3f}    {n_replace:7}   {(time.time() - timechk) / 60:8.2f}\n"
@@ -672,7 +676,7 @@ if __name__ == "__main__":
             f"Iteration {round_}: AVG. Obj. Score = {final_avg.mean():.3f} STELLA obj = {stella_obj.mean():.3f}"
         )
         df = pd.DataFrame(interm_bank, columns=column_name + ["stella_obj"])
-        df.to_csv(f"banks/bank_iteration_{round_}.csv", index=False)
+        df.to_csv(f"banks/{TARGET}_bank_iteration_{round_}.csv", index=False)
 
     final_bank = np.empty([bank.shape[0], 2 + NUM_FEATURES], dtype=object)
     final_bank[:, 0] = bank[:, 0]
@@ -682,14 +686,16 @@ if __name__ == "__main__":
 
     print(f"Total Cost Time: {total_time.get():.3f} min")
 
-    np.save(f"list_bank_{R_d:.5f}_{args.coefficient:.3f}.npy", save_bank)
+    np.save(f"list_bank_{R_d:.5f}_{args.coefficient:.3f}_{TARGET}.npy", save_bank)
     save_smiles = pd.DataFrame(save_bank[:, :, 0])
     save_smiles.to_csv(
-        f"list_smiles_{R_d:.5f}_{args.coefficient:.3f}.csv", header=False, index=False
+        f"list_smiles_{R_d:.5f}_{args.coefficient:.3f}_{TARGET}.csv",
+        header=False,
+        index=False,
     )
 
     df = pd.DataFrame(final_bank, columns=column_name)
-    df.to_csv(f"final_bank_{R_d:.5f}_{args.coefficient:.3f}.csv", index=False)
+    df.to_csv(f"final_bank_{R_d:.5f}_{args.coefficient:.3f}_{TARGET}.csv", index=False)
 
     # log_f.close()
     fail_f.close()
@@ -697,3 +703,6 @@ if __name__ == "__main__":
     plt.plot(plot_list)
     plt.tight_layout()
     plt.savefig("target_plot.png")
+    for calc in FEATURE_CALCULATORS:
+        if isinstance(calc, DockingFeatureCalculator):
+            pickle.dump(calc.cache, open(f"docking_feature_cache_{TARGET}.pkl", "wb"))
